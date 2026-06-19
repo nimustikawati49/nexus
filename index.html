@@ -994,32 +994,56 @@
     <!-- UNIFIED REST & FIREBASE CLOUD SYNC ENGINE -->
     <script>
         // Dedicated, unthrottled bucket ID for Dwi Mustika's CYBER NEXUS (Exactly 20 alphanumeric characters)
-        const primaryBucketUrl = "https://kvdb.io/cybNxMustika2026v400";
-        const backupBucketUrl = "https://kvdb.io/cybNxBackupv40002026";
+        const primaryBucketUrl = "https://kvdb.io/MustikaNexusCore2026";
+        const backupBucketUrl = "https://kvdb.io/MustikaNexusBack2026";
 
-        // Helper to perform simple requests to completely bypass CORS preflight handshakes on GitHub Pages/Netlify
-        async function fetchSimpleRequest(url, method, bodyData) {
-            const options = {
-                method: method,
-                mode: 'cors'
-            };
-            if (bodyData) {
-                options.body = typeof bodyData === 'string' ? bodyData : JSON.stringify(bodyData);
-                // text/plain Content-Type bypasses browser CORS preflight OPTIONS requests!
-                options.headers = {
-                    'Content-Type': 'text/plain'
-                };
+        // Helper to unpack session data safely, stripping any accidental list wrap from legacy POST requests
+        function unpackSessionData(text) {
+            try {
+                let parsed = JSON.parse(text);
+                if (Array.isArray(parsed)) {
+                    // Pull the latest pushed object to survive legacy POST stacking
+                    let lastItem = parsed[parsed.length - 1];
+                    if (Array.isArray(lastItem)) {
+                        return lastItem[lastItem.length - 1];
+                    }
+                    return lastItem;
+                }
+                return parsed;
+            } catch(e) {
+                console.error("Gagal mendecode session data:", e);
+                return null;
             }
-            return await fetch(url, options);
         }
 
-        // REST Session Sync (Using PUT for strict state overwrites, ensuring no nested arrays are formed)
+        // Helper to unpack score data safely
+        function unpackScoresData(text) {
+            try {
+                let parsed = JSON.parse(text);
+                if (Array.isArray(parsed)) {
+                    if (parsed.length > 0 && Array.isArray(parsed[parsed.length - 1])) {
+                        return parsed[parsed.length - 1];
+                    }
+                    return parsed;
+                }
+                return [];
+            } catch(e) {
+                return [];
+            }
+        }
+
+        // REST Session Sync (Using direct POST to key with text/plain to bypass CORS preflight blocking)
         window.cloudSaveSession = async function(session) {
             const dataStr = JSON.stringify(session);
+            const key = `session_${session.code}`;
+            
+            let primarySuccess = false;
+            let backupSuccess = false;
+
+            // Direct POST with text/plain Content-Type is a CORS-Simple Request. No preflight (OPTIONS) triggers!
             try {
-                // PUT method to directly overwrite the key state on kvdb.io
-                const res = await fetch(`${primaryBucketUrl}/cybernexus_v4_session_${session.code}`, {
-                    method: 'PUT',
+                const res = await fetch(`${primaryBucketUrl}/${key}`, {
+                    method: 'POST',
                     mode: 'cors',
                     headers: {
                         'Content-Type': 'text/plain'
@@ -1027,90 +1051,76 @@
                     body: dataStr
                 });
                 if (res.ok) {
-                    console.log("Sesi berhasil diunggah ke primary cloud REST (PUT).");
-                    return;
+                    console.log("Sesi berhasil diunggah ke cloud utama (POST).");
+                    primarySuccess = true;
                 }
-                throw new Error("Primary PUT failed");
             } catch(e) {
-                console.warn("Primary PUT gagal, menulis ke Backup Pool...", e);
-                try {
-                    await fetch(`${backupBucketUrl}/cybernexus_v4_session_${session.code}`, {
-                        method: 'PUT',
-                        mode: 'cors',
-                        headers: {
-                            'Content-Type': 'text/plain'
-                        },
-                        body: dataStr
-                    });
-                    console.log("Sesi berhasil diunggah ke backup cloud REST (PUT).");
-                } catch(err2) {
-                    console.error("Kedua REST server gagal disinkronkan:", err2);
-                }
+                console.warn("Gagal menyimpan sesi ke cloud utama:", e);
             }
+
+            try {
+                const res = await fetch(`${backupBucketUrl}/${key}`, {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: dataStr
+                });
+                if (res.ok) {
+                    console.log("Sesi berhasil diunggah ke cloud cadangan (POST).");
+                    backupSuccess = true;
+                }
+            } catch(e) {
+                console.warn("Gagal menyimpan sesi ke cloud cadangan:", e);
+            }
+
+            return (primarySuccess || backupSuccess);
         };
 
-        // REST Session Load with auto-unpacking larik (array) to ensure absolute 100% failover
+        // REST Session Load with auto-unpacking and proxy fallback + Cache Busting
         window.cloudGetSession = async function(sessionCode) {
-            const unpackSessionData = (text) => {
+            const key = `session_${sessionCode}`;
+            const cb = Date.now();
+
+            // We attempt direct fetching first. If browser blocks due to strict local policies, we use corsproxy.io
+            const targets = [
+                `${primaryBucketUrl}/${key}?_cb=${cb}`,
+                `${backupBucketUrl}/${key}?_cb=${cb}`,
+                `https://corsproxy.io/?${encodeURIComponent(`${primaryBucketUrl}/${key}?_cb=${cb}`)}`,
+                `https://corsproxy.io/?${encodeURIComponent(`${backupBucketUrl}/${key}?_cb=${cb}`)}`
+            ];
+
+            for (let target of targets) {
                 try {
-                    const parsed = JSON.parse(text);
-                    if (Array.isArray(parsed)) {
-                        // If stored as a list (legacy/incorrect POST fallback), take the last appended item
-                        return parsed[parsed.length - 1];
+                    const res = await fetch(target);
+                    if (res.ok) {
+                        const text = await res.text();
+                        const session = unpackSessionData(text);
+                        if (session && session.code === sessionCode) {
+                            console.log("Sesi kuis berhasil diunduh dari: " + target);
+                            return session;
+                        }
                     }
-                    return parsed;
                 } catch(e) {
-                    console.error("Gagal mendecode session data:", e);
-                    return null;
+                    console.warn("Gagal membaca sesi kuis dari target: " + target, e);
                 }
-            };
-
-            // Attempt from primary
-            try {
-                const res = await fetch(`${primaryBucketUrl}/cybernexus_v4_session_${sessionCode}`);
-                if (res.ok) {
-                    const text = await res.text();
-                    const session = unpackSessionData(text);
-                    if (session) return session;
-                }
-            } catch(e) {
-                console.warn("Gagal membaca sesi dari Primary, mencoba Backup...", e);
-            }
-
-            // Fallback from backup
-            try {
-                const res = await fetch(`${backupBucketUrl}/cybernexus_v4_session_${sessionCode}`);
-                if (res.ok) {
-                    const text = await res.text();
-                    const session = unpackSessionData(text);
-                    if (session) return session;
-                }
-            } catch(e) {
-                console.error("Gagal membaca sesi dari kedua REST database:", e);
             }
             return null;
         };
 
-        // REST Score Sync (Using flat score arrays with PUT overwriting to prevent list stacking)
+        // REST Score Sync (Using flat score arrays with POST overwriting to bypass CORS restrictions)
         window.cloudSubmitScore = async function(record) {
-            const primaryUrl = `${primaryBucketUrl}/cybernexus_v4_scores_${record.sessionCode}`;
-            const backupUrl = `${backupBucketUrl}/cybernexus_v4_scores_${record.sessionCode}`;
+            const key = `scores_${record.sessionCode}`;
+            const cb = Date.now();
 
-            async function pushToUrl(targetUrl) {
+            const tryPush = async (bucketUrl) => {
                 let currentScores = [];
                 try {
-                    const res = await fetch(targetUrl);
+                    const res = await fetch(`${bucketUrl}/${key}?_cb=${cb}`);
                     if (res.ok) {
                         const text = await res.text();
-                        const parsed = JSON.parse(text);
-                        if (Array.isArray(parsed)) {
-                            // Unpack if stored inside nested list legacy modes
-                            if (parsed.length > 0 && Array.isArray(parsed[parsed.length - 1])) {
-                                currentScores = parsed[parsed.length - 1];
-                            } else {
-                                currentScores = parsed;
-                            }
-                        }
+                        currentScores = unpackScoresData(text);
                     }
                 } catch(e) {}
 
@@ -1121,32 +1131,38 @@
                     currentScores.push(record);
                 }
 
-                // Overwrite score state using PUT
-                await fetch(targetUrl, {
-                    method: 'PUT',
+                const resWrite = await fetch(`${bucketUrl}/${key}`, {
+                    method: 'POST',
                     mode: 'cors',
                     headers: {
                         'Content-Type': 'text/plain'
                     },
                     body: JSON.stringify(currentScores)
                 });
-            }
+                return resWrite.ok;
+            };
+
+            let primarySuccess = false;
+            let backupSuccess = false;
 
             try {
-                await pushToUrl(primaryUrl);
-                console.log("Skor terkirim ke Primary cloud REST.");
+                primarySuccess = await tryPush(primaryBucketUrl);
             } catch(e) {
-                console.warn("Gagal kirim skor ke Primary, beralih ke Backup...", e);
+                console.warn("Gagal kirim skor ke cloud utama.");
+            }
+
+            if (!primarySuccess) {
                 try {
-                    await pushToUrl(backupUrl);
-                    console.log("Skor terkirim ke Backup cloud REST.");
-                } catch(err2) {
-                    console.error("Kedua REST server gagal mencatat skor.");
+                    backupSuccess = await tryPush(backupBucketUrl);
+                } catch(e) {
+                    console.error("Gagal kirim skor ke cloud cadangan.");
                 }
             }
+
+            return (primarySuccess || backupSuccess);
         };
 
-        // REST Polling Engine with automated server failover and list unpacking support
+        // REST Polling Engine with automated server failover and proxy fallback
         let restPollingTimer = null;
         window.startRESTScoresPolling = function(sessionCode, callback) {
             if (restPollingTimer) clearInterval(restPollingTimer);
@@ -1154,42 +1170,29 @@
             restPollingTimer = setInterval(poll, 4000);
 
             async function poll() {
-                const parseScores = (text) => {
+                const key = `scores_${sessionCode}`;
+                const cb = Date.now();
+                const targets = [
+                    `${primaryBucketUrl}/${key}?_cb=${cb}`,
+                    `${backupBucketUrl}/${key}?_cb=${cb}`,
+                    `https://corsproxy.io/?${encodeURIComponent(`${primaryBucketUrl}/${key}?_cb=${cb}`)}`,
+                    `https://corsproxy.io/?${encodeURIComponent(`${backupBucketUrl}/${key}?_cb=${cb}`)}`
+                ];
+
+                for (let target of targets) {
                     try {
-                        const parsed = JSON.parse(text);
-                        if (Array.isArray(parsed)) {
-                            if (parsed.length > 0 && Array.isArray(parsed[parsed.length - 1])) {
-                                return parsed[parsed.length - 1]; // Unpack legacy POST array nested lists
+                        const res = await fetch(target);
+                        if (res.ok) {
+                            const text = await res.text();
+                            const data = unpackScoresData(text);
+                            if (Array.isArray(data)) {
+                                callback(data);
+                                return; // Stop at first successful polling source
                             }
-                            return parsed;
                         }
-                        return [];
                     } catch(e) {
-                        return [];
+                        console.warn("Gagal polling data dari target: " + target);
                     }
-                };
-
-                try {
-                    const res = await fetch(`${primaryBucketUrl}/cybernexus_v4_scores_${sessionCode}`);
-                    if (res.ok) {
-                        const text = await res.text();
-                        const data = parseScores(text);
-                        callback(data);
-                        return;
-                    }
-                } catch(e) {
-                    console.warn("Gagal polling data dari Primary, beralih ke Backup...");
-                }
-
-                try {
-                    const res = await fetch(`${backupBucketUrl}/cybernexus_v4_scores_${sessionCode}`);
-                    if (res.ok) {
-                        const text = await res.text();
-                        const data = parseScores(text);
-                        callback(data);
-                    }
-                } catch(e) {
-                    console.error("Gagal polling data dari kedua server REST:", e);
                 }
             }
         };
@@ -2518,8 +2521,11 @@
             sesHistory[uniqueCode] = activeSession;
             localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
 
+            // Indikasi status muatan unggah ke Cloud untuk Guru
+            showCustomModal("📡 MENGHUBUNGKAN ARENA SIBER", "Sedang mendaftarkan sirkuit arena kuis baru Anda ke server cloud real-time...", "⚙️");
+
             // Kirim sesi ke Cloud
-            await window.cloudSaveSession(activeSession);
+            const uploadSuccess = await window.cloudSaveSession(activeSession);
 
             document.getElementById("teacher-live-monitor").classList.remove("hidden");
             document.getElementById("monitor-session-code").innerText = uniqueCode;
@@ -2540,7 +2546,12 @@
                 window.setupTeacherLiveMonitorListener(uniqueCode);
             }
 
-            showCustomModal("🛡️ ARENA BERHASIL AKTIF", "Sandi Arena: " + uniqueCode + "\nBagikan kode di atas ke siswa Anda untuk langsung memulai kuis!", "🎉");
+            if (uploadSuccess) {
+                showCustomModal("🛡️ ARENA BERHASIL AKTIF", "Sandi Arena: " + uniqueCode + "\nBagikan kode di atas ke siswa Anda untuk langsung memulai kuis secara live!", "🎉");
+            } else {
+                showCustomModal("⚠️ CORES DISINKRONISASI LOKAL", "Arena berhasil dibentuk secara lokal (" + uniqueCode + "). Namun, koneksi data cloud sedang terputus. Siswa baru hanya dapat mengakses sesi ini jika laptop Anda tetap terhubung pada server LAN lokal yang sama.", "⚠️");
+            }
+            
             switchTeacherTab('teacher-tab-config');
         }
 
@@ -2591,1030 +2602,4 @@
 
             const startBtn = document.querySelector('button[onclick="startStudentAdventure()"]');
             const originalBtnHtml = startBtn.innerHTML;
-            startBtn.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> Menghubungkan Arena...`;
-            startBtn.disabled = true;
-
-            const localSessions = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            let foundSess = localSessions[code];
-
-            if (!foundSess) {
-                foundSess = await window.cloudGetSession(code);
-            }
-
-            if (!foundSess) {
-                showCustomModal("⚠️ SESI TIDAK DITEMUKAN", "Sandi arena salah, belum dirilis oleh Guru, atau koneksi terputus!", "⚠️");
-                startBtn.innerHTML = originalBtnHtml;
-                startBtn.disabled = false;
-                return;
-            }
-
-            if (foundSess.status === "stopped") {
-                showCustomModal("🛑 GAME TELAH DIHENTIKAN", "Sesi game kuis ini sudah dihentikan oleh Guru.", "⚠️");
-                startBtn.innerHTML = originalBtnHtml;
-                startBtn.disabled = false;
-                return;
-            }
-
-            localSessions[code] = foundSess;
-            localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(localSessions));
-
-            startBtn.innerHTML = originalBtnHtml;
-            startBtn.disabled = false;
-
-            currentStudentName = name;
-            currentStudentClass = cls;
-            activeSession = foundSess;
-            mapTheme = foundSess.theme;
-            originalSessionDuration = foundSess.duration * 60;
-            timerSecondsRemaining = originalSessionDuration;
-
-            activeQuestions = [...foundSess.questions];
-            if (foundSess.shuffle) {
-                activeQuestions.sort(() => Math.random() - 0.5);
-            }
-
-            currentStudentIdx = 0;
-            studentScore = 0;
-            correctAnswersCount = 0; 
-            studentHP = 3;
-            studentStamina = 5;
-            studentComboStreak = 0;
-            totalSpeedTime = 0;
-            isProcessingAnswer = false;
-
-            document.getElementById("session-title-badge").classList.remove("hidden");
-            document.getElementById("header-assessment-title").innerHTML = activeSession.title + ' <span class="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-lg ml-2 font-black font-mono border border-cyan-500/30">' + activeSession.code + '</span>';
-
-            document.getElementById("gameplay-student-name").innerText = name;
-            document.getElementById("gameplay-student-class").innerText = "Kelas " + cls;
-            document.getElementById("gameplay-avatar-display").innerText = selectedStudentAvatarEmoji;
-            document.getElementById("gameplay-live-score").innerText = "0 Pts";
-
-            const indicator = document.getElementById("map-indicator-theme");
-            if (mapTheme === 'space') {
-                indicator.innerText = "🚀 MEDAN SPACE FRONTIER CIRCUIT";
-            } else if (mapTheme === 'cyber') {
-                indicator.innerText = "🌐 MEDAN CYBERPUNK NEXUS CORES";
-            } else {
-                indicator.innerText = "🗺️ MEDAN MEDIEVAL GLOW CIRCUIT";
-            }
-
-            document.getElementById("screen-student-gateway").classList.add("hidden");
-            document.getElementById("screen-gameplay").classList.remove("hidden");
-
-            if (countdownTimer) clearInterval(countdownTimer);
-            countdownTimer = setInterval(updateGameplayTimerTick, 1000);
-
-            updatePlayerHUD();
-            drawMapVisualCoordinates();
-            loadQuestionChallenge();
-            scrollToMainContainer();
-        }
-
-        function updateGameplayTimerTick() {
-            timerSecondsRemaining--;
-            if (timerSecondsRemaining <= 0) {
-                clearInterval(countdownTimer);
-                countdownTimer = null;
-                showCustomModal("⏳ WAKTU HABIS!", "Durasi kuis habis. Menghubungkan log data ke server...", "⚠️");
-                terminateStudentAdventure();
-                return;
-            }
-
-            saveCurrentStudentInterruptedState();
-
-            const min = Math.floor(timerSecondsRemaining / 60).toString().padStart(2, "0");
-            const sec = (timerSecondsRemaining % 60).toString().padStart(2, "0");
-            document.getElementById("gameplay-timer-display").innerText = `${min}:${sec}`;
-        }
-
-        function saveCurrentStudentInterruptedState() {
-            const state = {
-                name: currentStudentName,
-                className: currentStudentClass,
-                emoji: selectedStudentAvatarEmoji,
-                score: studentScore,
-                correctCount: correctAnswersCount, 
-                idx: currentStudentIdx,
-                hp: studentHP,
-                stamina: studentStamina,
-                timer: timerSecondsRemaining,
-                sessionCode: activeSession ? activeSession.code : "",
-                speed: totalSpeedTime
-            };
-            localStorage.setItem("cyber_nexus_interrupted_state", JSON.stringify(state));
-        }
-
-        function resumeInterruptedStudentSession() {
-            const str = localStorage.getItem("cyber_nexus_interrupted_state");
-            if (!str) return;
-
-            try {
-                const state = JSON.parse(str);
-                const localSessions = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-                const foundSess = localSessions[state.sessionCode];
-
-                if (!foundSess) {
-                    showCustomModal("⚠️ PEMULIHAN GAGAL", "Sesi arena siber tersebut sudah ditutup atau hangus.", "⚠️");
-                    localStorage.removeItem("cyber_nexus_interrupted_state");
-                    return;
-                }
-
-                currentStudentName = state.name;
-                currentStudentClass = state.className;
-                selectedStudentAvatarEmoji = state.emoji;
-                studentScore = state.score;
-                correctAnswersCount = state.correctCount || Math.round((state.score / 100) * foundSess.questions.length); 
-                currentStudentIdx = state.idx;
-                studentHP = state.hp;
-                studentStamina = state.stamina;
-                timerSecondsRemaining = state.timer;
-                totalSpeedTime = state.speed;
-                isProcessingAnswer = false;
-
-                activeSession = foundSess;
-                activeQuestions = [...foundSess.questions];
-                if (foundSess.shuffle) {
-                    activeQuestions.sort(() => Math.random() - 0.5);
-                }
-
-                document.getElementById("session-title-badge").classList.remove("hidden");
-                document.getElementById("header-assessment-title").innerHTML = `${activeSession.title} <span class="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-lg ml-2 font-black font-mono border border-cyan-500/30">${activeSession.code}</span>`;
-                
-                document.getElementById("gameplay-student-name").innerText = currentStudentName;
-                document.getElementById("gameplay-student-class").innerText = `Kelas ${currentStudentClass}`;
-                document.getElementById("gameplay-avatar-display").innerText = selectedStudentAvatarEmoji;
-                document.getElementById("gameplay-live-score").innerText = `${studentScore} Pts`;
-
-                document.getElementById("student-resume-box").classList.add("hidden");
-                document.getElementById("screen-student-gateway").classList.add("hidden");
-                document.getElementById("screen-gameplay").classList.remove("hidden");
-
-                if (countdownTimer) clearInterval(countdownTimer);
-                countdownTimer = setInterval(updateGameplayTimerTick, 1000);
-
-                updatePlayerHUD();
-                drawMapVisualCoordinates();
-                loadQuestionChallenge();
-                scrollToMainContainer();
-            } catch(e) {
-                localStorage.removeItem("cyber_nexus_interrupted_state");
-            }
-        }
-
-        function updatePlayerHUD() {
-            const hCont = document.getElementById("gameplay-hearts-container");
-            if (hCont) {
-                hCont.innerHTML = "";
-                for (let i = 0; i < 3; i++) {
-                    const s = document.createElement("i");
-                    s.className = i < studentHP ? "fa-solid fa-heart animate-pulse text-rose-500 text-glow-pink" : "fa-regular fa-heart text-slate-700";
-                    hCont.appendChild(s);
-                }
-            }
-
-            const sCont = document.getElementById("gameplay-stamina-container");
-            if (sCont) {
-                sCont.innerHTML = "";
-                for (let i = 0; i < 5; i++) {
-                    const s = document.createElement("i");
-                    s.className = i < studentStamina ? "fa-solid fa-bolt text-amber-400" : "fa-solid fa-bolt text-slate-700";
-                    sCont.appendChild(s);
-                }
-            }
-
-            const badge = document.getElementById("gameplay-combo-badge");
-            if (badge) {
-                if (studentComboStreak >= 3) {
-                    badge.classList.remove("hidden");
-                    document.getElementById("gameplay-combo-value").innerText = studentComboStreak;
-                } else {
-                    badge.classList.add("hidden");
-                }
-            }
-
-            const scoreDisplay = document.getElementById("gameplay-live-score");
-            if (scoreDisplay) {
-                scoreDisplay.innerText = `${studentScore} Pts`;
-            }
-        }
-
-        function drawMapVisualCoordinates() {
-            const currentStep = Math.min(5, Math.floor((currentStudentIdx / activeQuestions.length) * 5));
-            
-            for (let i = 0; i <= 5; i++) {
-                const node = document.getElementById(`map-node-${i}`);
-                if (!node) continue;
-                node.className = "w-11 h-11 rounded-full border-2 bg-slate-950 flex flex-col items-center justify-center font-bold text-xs relative z-10 transition-all duration-300 shadow-inner";
-                
-                if (i === currentStep) {
-                    node.classList.add("border-cyan-400", "text-cyan-400", "text-glow-cyan", "scale-115", "bg-slate-900");
-                } else if (i < currentStep) {
-                    node.classList.add("border-emerald-500", "text-emerald-400", "bg-emerald-950/20");
-                } else {
-                    node.classList.add("border-slate-800", "text-slate-500");
-                }
-            }
-
-            const progressLine = document.getElementById("map-glow-progress-line");
-            if (progressLine) {
-                const percentage = (currentStep / 5) * 100;
-                progressLine.style.width = `${percentage}%`;
-            }
-
-            setTimeout(() => {
-                const targetNode = document.getElementById(`map-node-${currentStep}`);
-                const token = document.getElementById("gameplay-player-token");
-                if (targetNode && token) {
-                    token.style.left = `${targetNode.offsetLeft + (targetNode.offsetWidth / 2) - 20}px`;
-                    token.innerText = selectedStudentAvatarEmoji;
-                }
-            }, 80);
-        }
-    </script>
-
-    <!-- INTERACTIVE INPUT BUILDERS -->
-    <script>
-        let currentSelectedPairLeft = null;
-        let activePairsSelected = {};
-        let puzzleLayoutState = [];
-
-        function loadQuestionChallenge() {
-            if (currentStudentIdx >= activeQuestions.length) {
-                triggerHologramFeedback(true, "MISI SELESAI! Menghubungkan ke pusat server...", "👑");
-                setTimeout(() => {
-                    terminateStudentAdventure();
-                }, 1000);
-                return;
-            }
-
-            const q = activeQuestions[currentStudentIdx];
-            document.getElementById("gameplay-question-topic").innerText = `TOPIC: ${q.topic}`;
-            document.getElementById("gameplay-question-index").innerText = `${currentStudentIdx + 1} / ${activeQuestions.length}`;
-            document.getElementById("gameplay-question-text").innerText = q.question;
-
-            const zone = document.getElementById("gameplay-input-zone");
-            zone.innerHTML = "";
-
-            currentSelectedPairLeft = null;
-            activePairsSelected = {};
-            questionStartTime = Date.now();
-            isProcessingAnswer = false;
-
-            const submitRow = document.getElementById("gameplay-submit-action-row");
-            if (q.type === 'choice' || q.type === 'short') {
-                submitRow.classList.add("hidden");
-            } else {
-                submitRow.classList.remove("hidden");
-            }
-
-            if (q.type === 'choice') {
-                const grid = document.createElement("div");
-                grid.className = "grid grid-cols-1 sm:grid-cols-2 gap-3.5";
-                q.options.forEach((opt, index) => {
-                    if (!opt || opt === "-") return;
-                    const btn = document.createElement("button");
-                    btn.type = "button";
-                    btn.className = "choice-option-btn text-left p-4 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/50 hover:bg-slate-900 transition-all text-xs focus:outline-none flex items-center gap-3 active:scale-[0.98]";
-                    btn.innerHTML = `<span class="bg-slate-950 border border-slate-800 w-7 h-7 rounded-xl flex items-center justify-center font-bold text-cyan-400 font-mono">${String.fromCharCode(65+index)}</span> <span>${opt}</span>`;
-                    
-                    btn.onclick = () => {
-                        if (isProcessingAnswer) return;
-                        isProcessingAnswer = true;
-                        
-                        const isCorrect = (index === q.correct);
-                        
-                        if (isCorrect) {
-                            btn.className = "choice-option-btn text-left p-4 rounded-2xl bg-emerald-950/80 border-emerald-500 text-emerald-300 transition-all text-xs focus:outline-none flex items-center gap-3";
-                        } else {
-                            btn.className = "choice-option-btn text-left p-4 rounded-2xl bg-rose-950/80 border-rose-500 text-rose-300 transition-all text-xs focus:outline-none flex items-center gap-3";
-                            const correctBtn = grid.children[q.correct];
-                            if (correctBtn) {
-                                correctBtn.className = "choice-option-btn text-left p-4 rounded-2xl bg-emerald-950/40 border-emerald-500/50 text-emerald-300/80 transition-all text-xs focus:outline-none flex items-center gap-3";
-                            }
-                        }
-                        
-                        evaluateAndAdvance(isCorrect);
-                    };
-                    grid.appendChild(btn);
-                });
-                zone.appendChild(grid);
-            } else if (q.type === 'short') {
-                const input = document.createElement("input");
-                input.type = "text";
-                input.id = "short-answer-input-field";
-                input.placeholder = "Ketik jawaban lalu tekan 'ENTER' di keyboard...";
-                input.className = "w-full bg-slate-900 border border-slate-850 focus:border-cyan-500 text-slate-100 rounded-2xl px-4 py-4 text-xs text-glow-cyan focus:outline-none font-mono transition-colors";
-                
-                input.onkeydown = (e) => {
-                    if (e.key === "Enter") {
-                        e.preventDefault();
-                        if (isProcessingAnswer) return;
-                        
-                        const val = input.value.trim().toUpperCase();
-                        if (!val) return;
-                        
-                        isProcessingAnswer = true;
-                        const isCorrect = (val === q.correct_answer.toUpperCase());
-                        
-                        if (isCorrect) {
-                            input.className = "w-full bg-emerald-950/60 border border-emerald-500 text-emerald-200 rounded-2xl px-4 py-4 text-xs focus:outline-none font-mono";
-                        } else {
-                            input.className = "w-full bg-rose-950/60 border border-rose-500 text-rose-200 rounded-2xl px-4 py-4 text-xs focus:outline-none font-mono";
-                        }
-                        
-                        evaluateAndAdvance(isCorrect);
-                    }
-                };
-                zone.appendChild(input);
-                input.focus();
-            } else if (q.type === 'match') {
-                const grid = document.createElement("div");
-                grid.className = "grid grid-cols-2 gap-4 text-xs";
-                
-                const colLeft = document.createElement("div");
-                colLeft.className = "space-y-2.5";
-                const colRight = document.createElement("div");
-                colRight.className = "space-y-2.5";
-
-                let rightShuffled = q.pairs.map(p => p.right).sort(() => Math.random() - 0.5);
-
-                q.pairs.forEach((p, idx) => {
-                    const btnLeft = document.createElement("button");
-                    btnLeft.type = "button";
-                    btnLeft.className = "match-btn-left w-full text-left p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/40 focus:outline-none transition-all";
-                    btnLeft.innerText = p.left;
-                    btnLeft.dataset.pairId = p.left;
-                    btnLeft.onclick = () => {
-                        document.querySelectorAll(".match-btn-left").forEach(b => b.classList.replace("border-cyan-500", "border-slate-800"));
-                        btnLeft.classList.replace("border-slate-800", "border-cyan-500");
-                        currentSelectedPairLeft = p.left;
-                    };
-                    colLeft.appendChild(btnLeft);
-                });
-
-                rightShuffled.forEach(text => {
-                    const btnRight = document.createElement("button");
-                    btnRight.type = "button";
-                    btnRight.className = "match-btn-right w-full text-left p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/40 focus:outline-none transition-all";
-                    btnRight.innerText = text;
-                    btnRight.onclick = () => {
-                        if (!currentSelectedPairLeft) {
-                            triggerHologramFeedback(false, "Ketuk istilah KOLOM KIRI terlebih dahulu!", "💡");
-                            return;
-                        }
-                        activePairsSelected[currentSelectedPairLeft] = text;
-                        triggerHologramFeedback(true, "Pasangan log berhasil diikat!", "🔗");
-                        btnRight.className = "match-btn-right w-full text-left p-3.5 rounded-xl bg-slate-950 border border-emerald-500 text-emerald-400 focus:outline-none";
-                    };
-                    colRight.appendChild(btnRight);
-                });
-
-                grid.appendChild(colLeft);
-                grid.appendChild(colRight);
-                zone.appendChild(grid);
-            } else if (q.type === 'order') {
-                const list = document.createElement("div");
-                list.className = "space-y-2.5 max-w-md mx-auto text-xs";
-                
-                let itemsShuffled = [...q.items].sort(() => Math.random() - 0.5);
-
-                itemsShuffled.forEach((text, idx) => {
-                    const row = document.createElement("div");
-                    row.className = "order-item bg-slate-900 border border-slate-850 p-4 rounded-xl flex items-center justify-between gap-4";
-                    row.innerHTML = `
-                        <span class="order-text font-semibold">${text}</span>
-                        <div class="flex gap-1.5">
-                            <button onclick="moveOrderItem(this, 'up')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▲</button>
-                            <button onclick="moveOrderItem(this, 'down')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▼</button>
-                        </div>
-                    `;
-                    list.appendChild(row);
-                });
-                zone.appendChild(list);
-            } else if (q.type === 'puzzle') {
-                const frame = document.createElement("div");
-                frame.className = "max-w-[280px] w-full mx-auto space-y-3 text-center";
-
-                const grid = document.createElement("div");
-                grid.className = "grid grid-cols-2 gap-1.5 w-full aspect-square mx-auto relative border border-slate-850 p-1.5 rounded-2xl bg-slate-950 shadow-lg shadow-cyan-950/10 overflow-hidden";
-                
-                puzzleLayoutState = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
-                
-                puzzleLayoutState.forEach((pos, idx) => {
-                    const div = document.createElement("div");
-                    div.className = "puzzle-piece aspect-square rounded-xl border border-slate-850 cursor-pointer overflow-hidden relative flex items-center justify-center bg-slate-900 transition-all duration-300 hover:border-cyan-500 hover:scale-[1.02]";
-                    
-                    if (currentStudentIdx === 0) {
-                        div.innerHTML = `
-                            <span class="absolute top-1.5 left-1.5 w-5 h-5 rounded-lg bg-slate-950/80 border border-cyan-500/50 flex items-center justify-center font-mono font-bold text-[10px] text-cyan-400 text-glow-cyan z-20 pointer-events-none">${pos + 1}</span>
-                        `;
-                    }
-                    div.dataset.index = idx;
-                    div.onclick = () => handlePuzzleClick(div);
-                    
-                    if (q.image_url) {
-                        div.style.backgroundImage = `url('${q.image_url}')`;
-                        div.style.backgroundSize = "200% 200%";
-                        
-                        let xPct = (pos % 2) * 100;
-                        let yPct = Math.floor(pos / 2) * 100;
-                        div.style.backgroundPosition = `${xPct}% ${yPct}%`;
-                    }
-
-                    grid.appendChild(div);
-                });
-
-                frame.appendChild(grid);
-
-                const hint = document.createElement("span");
-                hint.className = "text-[9px] text-slate-500 font-mono block";
-                hint.innerText = "Ketuk sepasang kotak sirkuit untuk saling menukar letaknya.";
-                frame.appendChild(hint);
-
-                zone.appendChild(frame);
-            }
-        }
-
-        function triggerHologramFeedback(isCorrect, message = "", customIcon = "") {
-            const overlay = document.getElementById("gameplay-feedback-overlay");
-            const card = document.getElementById("feedback-card");
-            const icon = document.getElementById("feedback-icon");
-            const title = document.getElementById("feedback-title");
-            const desc = document.getElementById("feedback-desc");
-
-            if (overlay && card && icon && title && desc) {
-                if (isCorrect) {
-                    icon.innerText = customIcon || "✔️";
-                    title.innerText = "DEKRIPSI SUKSES";
-                    title.className = "font-mono font-bold text-lg text-emerald-400 uppercase tracking-widest text-glow-cyan";
-                    desc.innerText = message;
-                    card.className = "bg-slate-900/95 border border-emerald-500 p-6 rounded-3xl max-w-xs w-full text-center shadow-2xl scale-100 transition-all duration-300 transform scale-100 neon-border-cyan";
-                } else {
-                    icon.innerText = customIcon || "🚨";
-                    title.innerText = "DEKRIPSI GAGAL";
-                    title.className = "font-mono font-bold text-lg text-rose-500 uppercase tracking-widest text-glow-pink animate-pulse";
-                    desc.innerText = message;
-                    card.className = "bg-slate-900/95 border border-rose-500 p-6 rounded-3xl max-w-xs w-full text-center shadow-2xl scale-100 transition-all duration-300 transform scale-100 neon-border-pink";
-                }
-
-                overlay.classList.remove("hidden");
-                setTimeout(() => {
-                    overlay.classList.add("hidden");
-                }, 850);
-            }
-        }
-
-        function moveOrderItem(btn, dir) {
-            const row = btn.closest(".order-item");
-            if (row) {
-                if (dir === 'up') {
-                    const prev = row.previousElementSibling;
-                    if (prev) row.parentNode.insertBefore(row, prev);
-                } else {
-                    const next = row.nextElementSibling;
-                    if (next) row.parentNode.insertBefore(next, row);
-                }
-            }
-        }
-
-        let firstSelectedPiece = null;
-        function handlePuzzleClick(el) {
-            if (!firstSelectedPiece) {
-                firstSelectedPiece = el;
-                el.classList.add("border-pink-500");
-                el.style.transform = "scale(0.95)";
-            } else {
-                const tmpHTML = el.innerHTML;
-                el.innerHTML = firstSelectedPiece.innerHTML;
-                firstSelectedPiece.innerHTML = tmpHTML;
-
-                const tmpBgImg = el.style.backgroundImage;
-                const tmpBgPos = el.style.backgroundPosition;
-                const tmpBgSize = el.style.backgroundSize;
-
-                el.style.backgroundImage = firstSelectedPiece.style.backgroundImage;
-                el.style.backgroundPosition = firstSelectedPiece.style.backgroundPosition;
-                el.style.backgroundSize = firstSelectedPiece.style.backgroundSize;
-
-                firstSelectedPiece.style.backgroundImage = tmpBgImg;
-                firstSelectedPiece.style.backgroundPosition = tmpBgPos;
-                firstSelectedPiece.style.backgroundSize = tmpBgSize;
-
-                firstSelectedPiece.classList.remove("border-pink-500");
-                firstSelectedPiece.style.transform = "scale(1)";
-                firstSelectedPiece = null;
-                synth.playTone(400, 'sine', 0.1);
-            }
-        }
-    </script>
-
-    <!-- EVALUATE ANSWERS & SUBMIT LOG ENGINE -->
-    <script>
-        function evaluateAndAdvance(isCorrect, messageSuccess = "", messageFailure = "") {
-            const timeElapsed = (Date.now() - questionStartTime) / 1000;
-            totalSpeedTime += timeElapsed;
-
-            if (isCorrect) {
-                synth.playBeepCorrect();
-                studentComboStreak++;
-                correctAnswersCount++;
-                
-                // SKALA POIN MAKSIMAL 100 POIN BERAPAPUN JUMLAH SOAL
-                studentScore = Math.round((correctAnswersCount / activeQuestions.length) * 100);
-                
-                if (studentStamina < 5) studentStamina++;
-
-                triggerHologramFeedback(true, messageSuccess || `Sektor keamanan dipulihkan! Combo: ${studentComboStreak}`, "✔️");
-            } else {
-                synth.playBeepWrong();
-                studentComboStreak = 0;
-
-                if (activeSession.rules === 'stamina') {
-                    studentStamina = Math.max(0, studentStamina - 2);
-                    triggerHologramFeedback(false, messageFailure || "Stamina terkuras -2!", "❌");
-                } else if (activeSession.rules === 'hp') {
-                    studentHP = Math.max(0, studentHP - 1);
-                    triggerHologramFeedback(false, messageFailure || "Sirkuit kognitif terganggu. HP -1!", "🚨");
-                } else {
-                    triggerHologramFeedback(false, messageFailure || "Logika salah. Bersihkan virus siber!", "❌");
-                }
-            }
-
-            if (studentHP <= 0 || studentStamina <= 0) {
-                setTimeout(() => {
-                    showCustomModal("🚨 SISTEM OVERLOAD CRITICAL!", "HP atau Stamina Anda habis! Sesi petualangan terpaksa lockdown.", "🚨");
-                    terminateStudentAdventure();
-                }, 900);
-                return;
-            }
-
-            setTimeout(() => {
-                currentStudentIdx++;
-                updatePlayerHUD();
-                drawMapVisualCoordinates();
-                loadQuestionChallenge();
-            }, 850);
-        }
-
-        function submitChallengeAnswer() {
-            if (isProcessingAnswer) return;
-            isProcessingAnswer = true;
-
-            const q = activeQuestions[currentStudentIdx];
-            let isCorrect = false;
-
-            if (q.type === 'match') {
-                let totalPairs = q.pairs.length;
-                let userMatches = Object.keys(activePairsSelected).length;
-                if (userMatches < totalPairs) {
-                    triggerHologramFeedback(false, "Jodohkan seluruh istilah terlebih dahulu!", "💡");
-                    isProcessingAnswer = false;
-                    return;
-                }
-
-                let matchesCorrect = true;
-                q.pairs.forEach(p => {
-                    if (activePairsSelected[p.left] !== p.right) matchesCorrect = false;
-                });
-                isCorrect = matchesCorrect;
-            } else if (q.type === 'order') {
-                let userOrdered = [];
-                document.querySelectorAll(".order-text").forEach(el => userOrdered.push(el.innerText));
-                
-                let orderCorrect = true;
-                q.items.forEach((item, index) => {
-                    if (userOrdered[index] !== item) orderCorrect = false;
-                });
-                isCorrect = orderCorrect;
-            } else if (q.type === 'puzzle') {
-                let userPieces = [];
-                document.querySelectorAll(".puzzle-piece").forEach(p => {
-                    const labelSpan = p.querySelector("span");
-                    if (labelSpan) {
-                        userPieces.push(parseInt(labelSpan.innerText) - 1);
-                    }
-                });
-
-                let puzzleCorrect = true;
-                const pieces = document.querySelectorAll(".puzzle-piece");
-                pieces.forEach((p, index) => {
-                    if (q.image_url) {
-                        let expectedX = (index % 2) * 100;
-                        let expectedY = Math.floor(index / 2) * 100;
-                        let expectedBgPos = `${expectedX}% ${expectedY}%`;
-                        let actualBgPos = p.style.backgroundPosition.replace(/\s+/g, '');
-                        let targetClean = expectedBgPos.replace(/\s+/g, '');
-                        if (actualBgPos !== targetClean) puzzleCorrect = false;
-                    }
-                });
-                isCorrect = puzzleCorrect;
-            }
-
-            evaluateAndAdvance(isCorrect);
-        }
-
-        function terminateStudentAdventure() {
-            if (countdownTimer) {
-                clearInterval(countdownTimer);
-                countdownTimer = null;
-            }
-
-            localStorage.removeItem("cyber_nexus_interrupted_state");
-
-            document.getElementById("screen-gameplay").classList.add("hidden");
-            document.getElementById("screen-leaderboard").classList.remove("hidden");
-
-            const timeSpentSec = originalSessionDuration - timerSecondsRemaining;
-            const formattedTime = `${Math.floor(timeSpentSec/60).toString().padStart(2,"0")}:${(timeSpentSec%60).toString().padStart(2,"0")}`;
-
-            const record = {
-                name: currentStudentName,
-                className: currentStudentClass,
-                character: `${selectedStudentAvatarEmoji} Penjelajah`,
-                score: studentScore,
-                timeSpent: formattedTime,
-                timeSpentSeconds: timeSpentSec,
-                avgSpeed: (totalSpeedTime / activeQuestions.length).toFixed(1),
-                sessionCode: activeSession.code,
-                date: new Date().toLocaleString()
-            };
-
-            let personalAttempts = JSON.parse(localStorage.getItem("cyber_nexus_student_attempts")) || [];
-            personalAttempts.unshift(record);
-            if (personalAttempts.length > 5) personalAttempts = personalAttempts.slice(0, 5);
-            localStorage.setItem("cyber_nexus_student_attempts", JSON.stringify(personalAttempts));
-
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            if (sesHistory[activeSession.code]) {
-                if (!sesHistory[activeSession.code].students) sesHistory[activeSession.code].students = [];
-                
-                const existingIndex = sesHistory[activeSession.code].students.findIndex(s => s.name === record.name && s.className === record.className);
-                if (existingIndex !== -1) {
-                    sesHistory[activeSession.code].students[existingIndex] = record;
-                } else {
-                    sesHistory[activeSession.code].students.push(record);
-                }
-                
-                sesHistory[activeSession.code].students.sort((a,b) => b.score - a.score);
-                localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
-            }
-
-            window.sendScoreToCloud(record);
-
-            const fallbackList = (sesHistory[activeSession.code] && sesHistory[activeSession.code].students) ? sesHistory[activeSession.code].students : [record];
-            renderLeaderboardTable(fallbackList);
-
-            if (window.setupRealtimeLeaderboard) {
-                window.setupRealtimeLeaderboard(activeSession.code);
-            }
-
-            synth.playBeepComplete();
-            scrollToMainContainer();
-        }
-
-        function queueOfflineScore(record) {
-            let queue = JSON.parse(localStorage.getItem("cyber_nexus_offline_queue")) || [];
-            queue.push(record);
-            localStorage.setItem("cyber_nexus_offline_queue", JSON.stringify(queue));
-            console.log("Internet offline. Skor diarsipkan di antrean sinkronisasi lokal.");
-        }
-
-        async function triggerOfflineDataSync() {
-            const queue = JSON.parse(localStorage.getItem("cyber_nexus_offline_queue")) || [];
-            if (queue.length === 0) return;
-
-            console.log("Koneksi kembali pulih. Memulai pengunggahan background sync...");
-            for (let i = 0; i < queue.length; i++) {
-                await window.sendScoreToCloud(queue[i]);
-            }
-            localStorage.removeItem("cyber_nexus_offline_queue");
-            showCustomModal("⚡ CLOUD SYNC BERHASIL", "Seluruh antrean nilai offline berhasil disinkronisasikan ke server real-time.", "✔️");
-        }
-    </script>
-
-    <!-- LEADERBOARD & ATTEMPTS HANDLERS -->
-    <script>
-        function renderLeaderboardTable(studentList) {
-            const p1Name = document.getElementById("podium-1-name");
-            const p1Score = document.getElementById("podium-1-score");
-            const p1Avatar = document.getElementById("podium-1-avatar");
-
-            const p2Name = document.getElementById("podium-2-name");
-            const p2Score = document.getElementById("podium-2-score");
-            const p2Avatar = document.getElementById("podium-2-avatar");
-
-            const p3Name = document.getElementById("podium-3-name");
-            const p3Score = document.getElementById("podium-3-score");
-            const p3Avatar = document.getElementById("podium-3-avatar");
-
-            if (p1Name) p1Name.innerText = "-"; if (p1Score) p1Score.innerText = "0 Pts"; if (p1Avatar) p1Avatar.innerText = "👑";
-            if (p2Name) p2Name.innerText = "-"; if (p2Score) p2Score.innerText = "0 Pts"; if (p2Avatar) p2Avatar.innerText = "🥈";
-            if (p3Name) p3Name.innerText = "-"; if (p3Score) p3Score.innerText = "0 Pts"; if (p3Avatar) p3Avatar.innerText = "🥉";
-
-            if (studentList[0]) {
-                if (p1Name) p1Name.innerText = studentList[0].name;
-                if (p1Score) p1Score.innerText = `${studentList[0].score} Pts`;
-                if (p1Avatar) p1Avatar.innerText = studentList[0].character.split(' ')[0] || "👑";
-            }
-            if (studentList[1]) {
-                if (p2Name) p2Name.innerText = studentList[1].name;
-                if (p2Score) p2Score.innerText = `${studentList[1].score} Pts`;
-                if (p2Avatar) p2Avatar.innerText = studentList[1].character.split(' ')[0] || "🥈";
-            }
-            if (studentList[2]) {
-                if (p3Name) p3Name.innerText = studentList[2].name;
-                if (p3Score) p3Score.innerText = `${studentList[2].score} Pts`;
-                if (p3Avatar) p3Avatar.innerText = studentList[2].character.split(' ')[0] || "🥉";
-            }
-
-            // Calculate Session Average Score
-            let avgClassScore = 0;
-            if (studentList.length > 0) {
-                avgClassScore = Math.round(studentList.reduce((acc, curr) => acc + curr.score, 0) / studentList.length);
-            }
-            const avgBadge = document.getElementById("leaderboard-class-average");
-            if (avgBadge) {
-                avgBadge.innerText = `${avgClassScore} Pts`;
-            }
-
-            const rows = document.getElementById("leaderboard-table-rows");
-            if (rows) {
-                rows.innerHTML = "";
-
-                if (studentList.length === 0) {
-                    rows.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-slate-500 font-mono">Belum ada penjelajah yang mencapai lobi server kuis ini.</td></tr>`;
-                    return;
-                }
-
-                studentList.forEach((st, idx) => {
-                    const tr = document.createElement("tr");
-                    tr.className = "hover:bg-slate-900/40 transition-colors border-b border-slate-900";
-                    
-                    let medalDisplay = idx + 1;
-                    if (idx === 0) medalDisplay = "🥇";
-                    else if (idx === 1) medalDisplay = "🥈";
-                    else if (idx === 2) medalDisplay = "🥉";
-
-                    tr.innerHTML = `
-                        <td class="py-3 px-2 text-center font-mono font-black text-glow-cyan text-slate-200">${medalDisplay}</td>
-                        <td class="py-3 px-3 font-bold text-slate-300">${st.name}</td>
-                        <td class="py-3 px-3 text-center text-slate-400 font-mono">${st.className}</td>
-                        <td class="py-3 px-3 text-center text-xl">${st.character.split(' ')[0] || '🤴'}</td>
-                        <td class="py-3 px-3 text-center text-slate-400 font-mono">${st.timeSpent}</td>
-                        <td class="py-3 px-3 text-center font-mono text-emerald-400 font-bold">${st.score} Pts</td>
-                    `;
-                    rows.appendChild(tr);
-                });
-            }
-
-            generatePersonalSiftQuote(studentList);
-        }
-
-        // Taktis Individu
-        function generatePersonalSiftQuote(studentList) {
-            const container = document.getElementById("personal-rank-alert-container");
-            if (!container) return;
-            container.innerHTML = "";
-
-            const myRecord = studentList.find(st => st.name === currentStudentName && st.className === currentStudentClass);
-            if (!myRecord) return;
-
-            const myRank = studentList.indexOf(myRecord) + 1;
-            const totalStudents = studentList.length;
-
-            const avgSpeed = parseFloat(myRecord.avgSpeed) || 10;
-            let statusBadge = "🛡️ OPERATOR SEIMBANG";
-            let descQuote = "Logika Anda berjalan stabil dan harmonis. Terus asah kemampuan analisis informatika Anda!";
-            let badgeClass = "bg-cyan-500/10 text-cyan-400 border-cyan-500/30";
-
-            if (myRecord.score >= 80 && avgSpeed < 5) {
-                statusBadge = "⚡ DEWA KOMPILASI (SPEEDRUNNER)";
-                descQuote = "Sangat impresif! Anda memecahkan algoritma siber dengan kecepatan tinggi tanpa melakukan kesalahan. Benar-benar talenta digital!";
-                badgeClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-glow-cyan animate-pulse";
-            } else if (myRecord.score >= 80 && avgSpeed >= 12) {
-                statusBadge = "🎯 DEKODER PRESISI TINGGI";
-                descQuote = "Luar biasa teliti! Anda memilih bersikap tenang, membaca soal dengan seksama, dan menghasilkan akurasi yang nyaris sempurna.";
-                badgeClass = "bg-teal-500/10 text-teal-400 border-teal-500/30";
-            } else if (myRecord.score < 50 && avgSpeed < 3.5) {
-                statusBadge = "🚨 MODUS HANTAM ASAL (SPAM-CLICKER)";
-                descQuote = "Sistem mendeteksi Anda menjawab terburu-buru tanpa membaca soal secara matang. Ingat, ksatria sejati mengutamakan strategi logis daripada asal klik!";
-                badgeClass = "bg-rose-500/10 text-rose-400 border-rose-500/30";
-            } else if (myRecord.score < 50 && avgSpeed >= 12) {
-                statusBadge = "🧠 KADET FASE KALIBRASI";
-                descQuote = "Jangan patah arang! Anda telah mencurahkan waktu untuk berpikir keras. Sedikit evaluasi materi dasar akan membuat petualangan berikutnya jauh lebih sukses.";
-                badgeClass = "bg-amber-500/10 text-amber-400 border-amber-500/30";
-            } else if (myRecord.score >= 50 && avgSpeed < 5) {
-                statusBadge = "🏃‍♂️ PENJELAJAH TERGESA-GESA";
-                descQuote = "Insting Anda cukup tajam, namun beberapa teka-teki meleset karena kurang sabar. Kurangi kecepatan sedikit, tingkatkan fokus membaca!";
-                badgeClass = "bg-pink-500/10 text-pink-400 border-pink-500/30";
-            }
-
-            container.innerHTML = `
-                <div class="absolute -right-16 -top-16 w-44 h-44 bg-cyan-500/5 rounded-full blur-3xl"></div>
-                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div>
-                        <span class="text-[10px] font-mono font-bold text-cyan-400 tracking-widest uppercase block mb-1">📊 ANALISIS KEPUTUSAN TAKTIS INDIVIDU_</span>
-                        <h4 class="text-lg font-bold text-slate-100 font-mono">Peringkat Anda: <span class="text-pink-400 font-black text-glow-pink">#${myRank}</span> dari ${totalStudents} Ksatria Sesi Ini</h4>
-                        <p class="text-slate-400 text-xs mt-1 leading-relaxed max-w-xl">"${descQuote}"</p>
-                    </div>
-                    <div class="flex flex-col items-end gap-1.5 shrink-0">
-                        <span class="border px-3 py-1 rounded-full text-[9px] font-mono font-bold tracking-wider uppercase ${badgeClass}">${statusBadge}</span>
-                        <span class="text-[10px] text-slate-500 font-mono font-medium">Kecepatan rata-rata: ${avgSpeed} detik/soal</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        function downloadSessionCSV() {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            const activeSessData = sesHistory[activeSession.code];
-            if (!activeSessData || !activeSessData.students || activeSessData.students.length === 0) {
-                showCustomModal("⚠️ EKSPOR GAGAL", "Belum ada rekap data nilai yang tersimpan untuk sesi kuis ini.", "⚠️");
-                return;
-            }
-
-            let csvContent = "data:text/csv;charset=utf-8,Peringkat,Nama Siswa,Kelas,Avatar,Waktu Tempuh,Skor,Kecepatan Detik/Soal\n";
-            activeSessData.students.forEach((st, idx) => {
-                csvContent += `${idx+1},${st.name},${st.className},${st.character.split(' ')[0]},${st.timeSpent},${st.score},${st.avgSpeed}\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Rekap_${activeSession.code}_${activeSession.title.replace(/\s+/g, '_')}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function renderHistoryClasses() {
-            const container = document.getElementById("history-classes-container");
-            if (!container) return;
-            container.innerHTML = "";
-            const sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            const keys = Object.keys(sesHistory);
-
-            if (keys.length === 0) {
-                container.innerHTML = `<div class="text-center py-6 text-slate-500 font-mono text-xs">Belum ada arsip sesi kelas yang dibuat. Mulailah merancang arena kuis kustom pertama Anda!</div>`;
-                return;
-            }
-
-            keys.forEach(code => {
-                const sess = sesHistory[code];
-                
-                let studentList = [];
-                if (window.allCloudScores && window.allCloudScores.length > 0) {
-                    studentList = window.allCloudScores.filter(s => s.sessionCode === code);
-                } else {
-                    studentList = sess.students || [];
-                }
-                studentList.sort((a, b) => b.score - a.score);
-
-                sess.students = studentList;
-                sesHistory[code] = sess;
-
-                const countSt = studentList.length;
-                
-                let avgClassScore = 0;
-                if (countSt > 0) {
-                    avgClassScore = Math.round(studentList.reduce((acc, curr) => acc + curr.score, 0) / countSt);
-                }
-
-                const div = document.createElement("div");
-                div.className = "bg-slate-950 p-4 rounded-2xl border border-slate-900 space-y-3 shadow-inner";
-                
-                const isStopped = sess.status === "stopped";
-                const statusBadgeHtml = isStopped 
-                    ? `<span class="bg-rose-950/40 text-rose-400 font-mono font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase border border-rose-500/20 ml-1.5">STOPPED</span>`
-                    : `<span class="bg-emerald-950/40 text-emerald-400 font-mono font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase border border-emerald-500/20 ml-1.5 animate-pulse">ACTIVE</span>`;
-
-                div.innerHTML = `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-900 pb-2">
-                        <div>
-                            <span class="bg-cyan-900/40 text-cyan-400 font-mono font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase border border-cyan-500/20">${code}</span>
-                            <span class="font-bold text-slate-200 text-xs ml-1.5">${sess.title}</span>
-                            ${statusBadgeHtml}
-                        </div>
-                        <div class="text-[10px] text-slate-500 font-mono font-medium">Tantangan: ${sess.questions.length} Soal • Durasi: ${sess.duration} Menit</div>
-                    </div>
-                    <div class="flex justify-between items-center text-xs flex-wrap gap-2">
-                        <div class="flex flex-col gap-0.5 text-slate-400 font-mono text-[10px]">
-                            <span class="font-medium">👥 ${countSt} Peserta Misi Aktif (Tersinkronisasi Cloud)</span>
-                            <span class="text-amber-400 font-bold">📈 Rata-rata Nilai: ${avgClassScore} Pts</span>
-                        </div>
-                        <div class="flex gap-1.5 flex-wrap">
-                            ${!isStopped ? `<button onclick="stopSessByCode('${code}')" class="bg-rose-950/20 hover:bg-rose-900/30 text-rose-400 border border-rose-900/40 px-2.5 py-2 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1">🛑 Stop</button>` : ''}
-                            <button onclick="downloadCSVByCode('${code}')" class="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-[10px] font-bold flex items-center gap-1 transition-all"><i class="fa-solid fa-file-csv text-emerald-400"></i> Ekspor CSV</button>
-                            <button onclick="deleteSessByCode('${code}')" class="bg-rose-950/20 hover:bg-rose-900/30 text-rose-400 border border-rose-900/40 px-2.5 py-2 rounded-xl text-[10px] font-bold transition-all">Hapus</button>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(div);
-            });
-            
-            localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
-        }
-
-        function downloadCSVByCode(code) {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            const activeSessData = sesHistory[code];
-            
-            let studentList = [];
-            if (window.allCloudScores && window.allCloudScores.length > 0) {
-                studentList = window.allCloudScores.filter(s => s.sessionCode === code);
-            } else {
-                studentList = activeSessData ? activeSessData.students : [];
-            }
-            studentList.sort((a, b) => b.score - a.score);
-
-            if (studentList.length === 0) {
-                showCustomModal("⚠️ EKSPOR GAGAL", "Belum ada ksatria data yang terdaftar di sesi kelas ini.", "⚠️");
-                return;
-            }
-
-            let csvContent = "data:text/csv;charset=utf-8,Peringkat,Nama Siswa,Kelas,Avatar,Waktu Tempuh,Skor,Kecepatan Detik/Soal\n";
-            studentList.forEach((st, idx) => {
-                csvContent += `${idx+1},${st.name},${st.className},${st.character.split(' ')[0]},${st.timeSpent},${st.score},${st.avgSpeed}\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Rekap_${code}_ClassLog.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        async function stopSessByCode(code) {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            if (sesHistory[code]) {
-                sesHistory[code].status = "stopped";
-                localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
-                
-                await window.cloudSaveSession(sesHistory[code]);
-
-                if (activeSession && activeSession.code === code) {
-                    activeSession.status = "stopped";
-                    const btnStop = document.getElementById("btn-stop-session");
-                    if (btnStop) {
-                        btnStop.innerText = "🛑 SESI DIHENTIKAN";
-                        btnStop.className = "bg-slate-800 text-slate-500 font-black px-4 py-2 rounded-xl text-[10px] uppercase font-mono border border-slate-750 cursor-not-allowed";
-                        btnStop.disabled = true;
-                    }
-                }
-
-                showCustomModal("🛑 GAME DIAKHIRI", "Akses pendaftaran siswa baru untuk kode " + activeSession.code + " telah resmi dihentikan.", "⚠️");
-                renderHistoryClasses();
-            }
-        }
-
-        function deleteSessByCode(code) {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            delete sesHistory[code];
-            localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
-            renderHistoryClasses();
-            showCustomModal("✔️ PEMBERSIHAN SELESAI", `Sesi ${code} berhasil dibersihkan dari daftar arsip.`, "✔️");
-        }
-
-        function clearAllHistoryClasses() {
-            localStorage.removeItem("cyber_nexus_active_sessions");
-            renderHistoryClasses();
-            showCustomModal("✔️ RESET TOTAL SELESAI", "Seluruh riwayat arsip kelas berhasil di-wipe bersih.", "✔️");
-        }
-
-        function restartSystem() {
-            document.getElementById("screen-leaderboard").classList.add("hidden");
-            document.getElementById("screen-gate").classList.remove("hidden");
-            
-            document.getElementById("session-title-badge").classList.add("hidden");
-
-            document.getElementById("student-name").value = "";
-            document.getElementById("student-class").value = "";
-            document.getElementById("student-session-code").value = "";
-
-            if (countdownTimer) {
-                clearInterval(countdownTimer);
-                countdownTimer = null;
-            }
-
-            scrollToMainContainer();
-        }
-
-        function scrollToMainContainer() {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        window.addEventListener('keydown', function(event) {
-            if (event.key === "Escape") {
-                const manual = document.getElementById("manual-panel");
-                if (manual) manual.classList.add("hidden");
-                closeModalDialog();
-                closeConfirmDialog();
-                closeQuizPreviewModal();
-            }
-        });
-    </script>
-</body>
-</html>
+            startBtn.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin
