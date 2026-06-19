@@ -514,7 +514,7 @@
                         </div>
                     </div>
 
-                    <!-- Dynamic Category Filter Buttons -->
+                    <!-- Category Filters -->
                     <div class="flex flex-wrap gap-2 bg-slate-950 p-2 rounded-2xl border border-slate-900 text-[10px] sm:text-xs">
                         <button id="filter-all" onclick="filterTeacherQuestions('all')" class="px-3.5 py-2 rounded-xl font-bold font-mono transition-all bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5">
                             <span>🌌</span> All (Campur) (0)
@@ -931,7 +931,7 @@
                     </div>
 
                     <!-- Player Token Avatar inside map -->
-                    <div id="gameplay-player-token" class="absolute text-2xl w-10 h-10 bg-gradient-to-tr from-cyan-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/30 border border-slate-950 z-20 transition-all duration-500" style="left: -10px; top: calc(50% - 20px);">
+                    <div id="gameplay-player-token" class="absolute text-2xl w-10 h-10 bg-gradient-to-tr from-cyan-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20 z-20 transition-all duration-500" style="left: -10px; top: calc(50% - 20px);">
                         🤴
                     </div>
                 </div>
@@ -1223,6 +1223,7 @@
 
         // REST + Firestore Dual-Write Session Sync
         window.cloudSaveSession = async function(session) {
+            const dataStr = JSON.stringify(session);
             const key = `session_${session.code}`;
             let firestoreSuccess = false;
 
@@ -1492,252 +1493,885 @@
         initCloudModule();
     </script>
 
-    <!-- ADDITIONAL INTERACTIVE FUNCTIONS -->
+    <!-- CORE INTERACTIVE LOGIC & SCREEN ROUTERS -->
     <script>
-        // Analysis Decision Taktis Generator
-        function generatePersonalSiftQuote(studentList) {
-            const container = document.getElementById("personal-rank-alert-container");
-            if (!container) return;
-            container.innerHTML = "";
-
-            const myRecord = studentList.find(st => st.name === currentStudentName && st.className === currentStudentClass);
-            if (!myRecord) return;
-
-            const myRank = studentList.indexOf(myRecord) + 1;
-            const totalStudents = studentList.length;
-
-            const avgSpeed = parseFloat(myRecord.avgSpeed) || 10;
-            let statusBadge = "🛡️ OPERATOR SEIMBANG";
-            let descQuote = "Logika Anda berjalan stabil dan harmonis. Terus asah kemampuan analisis informatika Anda!";
-            let badgeClass = "bg-cyan-500/10 text-cyan-400 border-cyan-500/30";
-
-            if (myRecord.score >= 80 && avgSpeed < 5) {
-                statusBadge = "⚡ DEWA KOMPILASI (SPEEDRUNNER)";
-                descQuote = "Sangat impresif! Anda memecahkan algoritma siber dengan kecepatan tinggi tanpa melakukan kesalahan. Benar-benar talenta digital!";
-                badgeClass = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-glow-cyan animate-pulse";
-            } else if (myRecord.score >= 80 && avgSpeed >= 12) {
-                statusBadge = "🎯 DEKODER PRESISI TINGGI";
-                descQuote = "Luar biasa teliti! Anda memilih bersikap tenang, membaca soal dengan seksama, dan menghasilkan akurasi yang nyaris sempurna.";
-                badgeClass = "bg-teal-500/10 text-teal-400 border-teal-500/30";
-            } else if (myRecord.score < 50 && avgSpeed < 3.5) {
-                statusBadge = "🚨 MODUS HANTAM ASAL (SPAM-CLICKER)";
-                descQuote = "Sistem mendeteksi Anda menjawab terburu-buru tanpa membaca soal secara matang. Ingat, ksatria sejati mengutamakan strategi logis daripada asal klik!";
-                badgeClass = "bg-rose-500/10 text-rose-400 border-rose-500/30";
-            } else if (myRecord.score < 50 && avgSpeed >= 12) {
-                statusBadge = "🧠 KADET FASE KALIBRASI";
-                descQuote = "Jangan patah arang! Anda telah mencurahkan waktu untuk berpikir keras. Sedikit evaluasi materi dasar akan membuat petualangan berikutnya jauh lebih sukses.";
-                badgeClass = "bg-amber-500/10 text-amber-400 border-amber-500/30";
-            } else if (myRecord.score >= 50 && avgSpeed < 5) {
-                statusBadge = "🏃‍♂️ PENJELAJAH TERGESA-GESA";
-                descQuote = "Insting Anda cukup tajam, namun beberapa teka-teki meleset karena kurang sabar. Kurangi kecepatan sedikit, tingkatkan fokus membaca!";
-                badgeClass = "bg-pink-500/10 text-pink-400 border-pink-500/30";
-            }
-
-            container.innerHTML = `
-                <div class="absolute -right-16 -top-16 w-44 h-44 bg-cyan-500/5 rounded-full blur-3xl"></div>
-                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div>
-                        <span class="text-[10px] font-mono font-bold text-cyan-400 tracking-widest uppercase block mb-1">📊 ANALISIS KEPUTUSAN TAKTIS INDIVIDU_</span>
-                        <h4 class="text-lg font-bold text-slate-100 font-mono">Peringkat Anda: <span class="text-pink-400 font-black text-glow-pink">#${myRank}</span> dari ${totalStudents} Ksatria Sesi Ini</h4>
-                        <p class="text-slate-400 text-xs mt-1 leading-relaxed max-w-xl">"${descQuote}"</p>
-                    </div>
-                    <div class="flex flex-col items-end gap-1.5 shrink-0">
-                        <span class="border px-3 py-1 rounded-full text-[9px] font-mono font-bold tracking-wider uppercase ${badgeClass}">${statusBadge}</span>
-                        <span class="text-[10px] text-slate-500 font-mono font-medium">Kecepatan rata-rata: ${avgSpeed} detik/soal</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        function downloadSessionCSV() {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            const activeSessData = sesHistory[activeSession.code];
-            if (!activeSessData || !activeSessData.students || activeSessData.students.length === 0) {
-                showCustomModal("⚠️ EKSPOR GAGAL", "Belum ada rekap data nilai yang tersimpan untuk sesi kuis ini.", "⚠️");
-                return;
-            }
-
-            let csvContent = "data:text/csv;charset=utf-8,Peringkat,Nama Siswa,Kelas,Avatar,Waktu Tempuh,Skor,Kecepatan Detik/Soal\n";
-            activeSessData.students.forEach((st, idx) => {
-                csvContent += `${idx+1},${st.name},${st.className},${st.character.split(' ')[0]},${st.timeSpent},${st.score},${st.avgSpeed}\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Rekap_${activeSession.code}_${activeSession.title.replace(/\s+/g, '_')}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function renderHistoryClasses() {
-            const container = document.getElementById("history-classes-container");
-            if (!container) return;
-            container.innerHTML = "";
-            const sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            const keys = Object.keys(sesHistory);
-
-            if (keys.length === 0) {
-                container.innerHTML = `<div class="text-center py-6 text-slate-500 font-mono text-xs">Belum ada arsip sesi kelas yang dibuat. Mulailah merancang arena kuis kustom pertama Anda!</div>`;
-                return;
-            }
-
-            keys.forEach(code => {
-                const sess = sesHistory[code];
-                
-                let studentList = [];
-                if (window.allCloudScores && window.allCloudScores.length > 0) {
-                    studentList = window.allCloudScores.filter(s => s.sessionCode === code);
-                } else {
-                    studentList = sess.students || [];
-                }
-                studentList.sort((a, b) => b.score - a.score);
-
-                sess.students = studentList;
-                sesHistory[code] = sess;
-
-                const countSt = studentList.length;
-                
-                let avgClassScore = 0;
-                if (countSt > 0) {
-                    avgClassScore = Math.round(studentList.reduce((acc, curr) => acc + curr.score, 0) / countSt);
-                }
-
-                const div = document.createElement("div");
-                div.className = "bg-slate-950 p-4 rounded-2xl border border-slate-900 space-y-3 shadow-inner";
-                
-                const isStopped = sess.status === "stopped";
-                const statusBadgeHtml = isStopped 
-                    ? `<span class="bg-rose-950/40 text-rose-400 font-mono font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase border border-rose-500/20 ml-1.5">STOPPED</span>`
-                    : `<span class="bg-emerald-950/40 text-emerald-400 font-mono font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase border border-emerald-500/20 ml-1.5 animate-pulse">ACTIVE</span>`;
-
-                div.innerHTML = `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-900 pb-2">
-                        <div>
-                            <span class="bg-cyan-900/40 text-cyan-400 font-mono font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase border border-cyan-500/20">${code}</span>
-                            <span class="font-bold text-slate-200 text-xs ml-1.5">${sess.title}</span>
-                            ${statusBadgeHtml}
-                        </div>
-                        <div class="text-[10px] text-slate-500 font-mono font-medium">Tantangan: ${sess.questions.length} Soal • Durasi: ${sess.duration} Menit</div>
-                    </div>
-                    <div class="flex justify-between items-center text-xs flex-wrap gap-2">
-                        <div class="flex flex-col gap-0.5 text-slate-400 font-mono text-[10px]">
-                            <span class="font-medium">👥 ${countSt} Peserta Misi Aktif (Tersinkronisasi Cloud)</span>
-                            <span class="text-amber-400 font-bold">📈 Rata-rata Nilai: ${avgClassScore} Pts</span>
-                        </div>
-                        <div class="flex gap-1.5 flex-wrap">
-                            ${!isStopped ? `<button onclick="stopSessByCode('${code}')" class="bg-rose-950/20 hover:bg-rose-900/30 text-rose-400 border border-rose-900/40 px-2.5 py-2 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1">🛑 Stop</button>` : ''}
-                            <button onclick="downloadCSVByCode('${code}')" class="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 px-3.5 py-2 rounded-xl text-[10px] font-bold flex items-center gap-1 transition-all"><i class="fa-solid fa-file-csv text-emerald-400"></i> Ekspor CSV</button>
-                            <button onclick="deleteSessByCode('${code}')" class="bg-rose-950/20 hover:bg-rose-900/30 text-rose-300 border border-rose-900/40 px-2.5 py-2 rounded-xl text-[10px] font-bold transition-all">Hapus</button>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(div);
-            });
+        // Sound synthesiser engine using modern browser AudioContext with procedural Ambient BGM
+        const synth = {
+            ctx: null,
+            bgmOsc1: null,
+            bgmOsc2: null,
+            bgmGain: null,
+            isBgmPlaying: false,
+            bgmInterval: null,
             
-            localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
-        }
-
-        function downloadCSVByCode(code) {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            const activeSessData = sesHistory[code];
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playTone(freq, type, duration, volume = 0.1) {
+                this.init();
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gainNode = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.value = freq;
+                    gainNode.gain.setValueAtTime(volume, this.ctx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gainNode);
+                    gainNode.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            },
+            playBeepCorrect() {
+                this.playTone(600, 'sine', 0.15);
+                setTimeout(() => this.playTone(850, 'sine', 0.2), 80);
+            },
+            playBeepWrong() {
+                this.playTone(280, 'sawtooth', 0.3);
+            },
+            playBeepComplete() {
+                this.playTone(520, 'sine', 0.1);
+                setTimeout(() => this.playTone(650, 'sine', 0.1), 100);
+                setTimeout(() => this.playTone(780, 'sine', 0.15), 200);
+                setTimeout(() => this.playTone(1050, 'sine', 0.3), 300);
+            },
             
-            let studentList = [];
-            if (window.allCloudScores && window.allCloudScores.length > 0) {
-                studentList = window.allCloudScores.filter(s => s.sessionCode === code);
-            } else {
-                studentList = activeSessData ? activeSessData.students : [];
-            }
-            studentList.sort((a, b) => b.score - a.score);
-
-            if (studentList.length === 0) {
-                showCustomModal("⚠️ EKSPOR GAGAL", "Belum ada ksatria data yang terdaftar di sesi kelas ini.", "⚠️");
-                return;
-            }
-
-            let csvContent = "data:text/csv;charset=utf-8,Peringkat,Nama Siswa,Kelas,Avatar,Waktu Tempuh,Skor,Kecepatan Detik/Soal\n";
-            studentList.forEach((st, idx) => {
-                csvContent += `${idx+1},${st.name},${st.className},${st.character.split(' ')[0]},${st.timeSpent},${st.score},${st.avgSpeed}\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `Rekap_${code}_ClassLog.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        async function stopSessByCode(code) {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            if (sesHistory[code]) {
-                sesHistory[code].status = "stopped";
-                localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
+            // Retro procedural synthesizer music loops
+            startBgmEngine() {
+                this.init();
+                if (this.isBgmPlaying) return;
+                this.isBgmPlaying = true;
                 
-                await window.cloudSaveSession(sesHistory[code]);
+                let step = 0;
+                const melodies = [220.00, 261.63, 329.63, 392.00, 440.00, 523.25];
+                const baseline = [110.00, 110.00, 130.81, 146.83, 110.00, 98.00];
 
-                if (activeSession && activeSession.code === code) {
-                    activeSession.status = "stopped";
-                    const btnStop = document.getElementById("btn-stop-session");
-                    if (btnStop) {
-                        btnStop.innerText = "🛑 SESI DIHENTIKAN";
-                        btnStop.className = "bg-slate-800 text-slate-500 font-black px-4 py-2 rounded-xl text-[10px] uppercase font-mono border border-slate-750 cursor-not-allowed";
-                        btnStop.disabled = true;
+                this.bgmInterval = setInterval(() => {
+                    if (!this.isBgmPlaying) return;
+                    
+                    if (step % 4 === 0) {
+                        this.playTone(baseline[Math.floor(step / 4) % baseline.length], 'triangle', 1.2, 0.08);
                     }
+                    
+                    let noteFreq = melodies[step % melodies.length];
+                    if (step % 2 === 0) {
+                        this.playTone(noteFreq, 'sine', 0.3, 0.04);
+                    } else if (step % 7 === 0) {
+                        this.playTone(noteFreq * 2, 'sawtooth', 0.1, 0.02);
+                    }
+                    
+                    step++;
+                }, 220);
+            },
+            stopBgmEngine() {
+                this.isBgmPlaying = false;
+                if (this.bgmInterval) {
+                    clearInterval(this.bgmInterval);
+                    this.bgmInterval = null;
                 }
+            }
+        };
 
-                showCustomModal("🛑 GAME DIAKHIRI", "Akses pendaftaran siswa baru untuk kode " + activeSession.code + " telah resmi dihentikan.", "⚠️");
-                renderHistoryClasses();
+        function toggleRetroSynthMusic() {
+            const textEl = document.getElementById("retro-bgm-text");
+            const indicatorEl = document.getElementById("retro-bgm-indicator");
+            if (synth.isBgmPlaying) {
+                synth.stopBgmEngine();
+                textEl.innerText = "Musik Atmosfer: OFF";
+                indicatorEl.className = "";
+            } else {
+                synth.startBgmEngine();
+                textEl.innerText = "Musik Atmosfer: ON";
+                indicatorEl.className = "animate-spin";
             }
         }
 
-        function deleteSessByCode(code) {
-            let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
-            delete sesHistory[code];
-            localStorage.setItem("cyber_nexus_active_sessions", JSON.stringify(sesHistory));
-            renderHistoryClasses();
-            showCustomModal("✔️ PEMBERSIHAN SELESAI", `Sesi ${code} berhasil dibersihkan dari daftar arsip.`, "✔️");
-        }
-
-        function clearAllHistoryClasses() {
-            localStorage.removeItem("cyber_nexus_active_sessions");
-            renderHistoryClasses();
-            showCustomModal("✔️ RESET TOTAL SELESAI", "Seluruh riwayat arsip kelas berhasil di-wipe bersih.", "✔️");
-        }
-
-        function restartSystem() {
-            document.getElementById("screen-leaderboard").classList.add("hidden");
-            document.getElementById("screen-gate").classList.remove("hidden");
+        // Toggle visual themes dynamically
+        function applyVisualPalettes(themeName) {
+            activeColorTheme = themeName;
+            const body = document.body;
             
-            document.getElementById("session-title-badge").classList.add("hidden");
+            document.querySelectorAll(".theme-header").forEach(el => {
+                el.classList.remove("text-cyan-400", "text-emerald-400", "text-rose-500");
+            });
 
-            document.getElementById("student-name").value = "";
-            document.getElementById("student-class").value = "";
-            document.getElementById("student-session-code").value = "";
-
-            if (countdownTimer) {
-                clearInterval(countdownTimer);
-                countdownTimer = null;
+            if (themeName === 'matrix') {
+                body.style.backgroundImage = "radial-gradient(circle at 20% 30%, rgba(16, 185, 129, 0.08) 0%, transparent 40%), radial-gradient(circle at 80% 70%, rgba(6, 182, 212, 0.03) 0%, transparent 40%)";
+                document.getElementById("teacher-portal-title").className = "theme-header text-xl md:text-2xl text-emerald-400 font-bold font-mono text-glow-emerald";
+                document.getElementById("student-portal-title").className = "theme-header text-xl md:text-2xl text-emerald-400 font-bold font-mono text-glow-emerald";
+            } else if (themeName === 'crimson') {
+                body.style.backgroundImage = "radial-gradient(circle at 20% 30%, rgba(244, 63, 94, 0.1) 0%, transparent 40%), radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.05) 0%, transparent 40%)";
+                document.getElementById("teacher-portal-title").className = "theme-header text-xl md:text-2xl text-rose-500 font-bold font-mono text-glow-pink animate-pulse";
+                document.getElementById("student-portal-title").className = "theme-header text-xl md:text-2xl text-rose-500 font-bold font-mono text-glow-pink";
+            } else { // cyan default
+                body.style.backgroundImage = "radial-gradient(circle at 20% 30%, rgba(168, 85, 247, 0.08) 0%, transparent 40%), radial-gradient(circle at 80% 70%, rgba(6, 182, 212, 0.08) 0%, transparent 40%)";
+                document.getElementById("teacher-portal-title").className = "theme-header text-xl md:text-2xl text-cyan-400 font-bold font-mono text-glow-cyan";
+                document.getElementById("student-portal-title").className = "theme-header text-xl md:text-2xl text-cyan-400 font-bold font-mono text-glow-cyan";
             }
+        }
 
+        // Preset Questions Loader for Kurikulum Merdeka
+        const merdekaPresets = {
+            computational: [
+                { id: 101, topic: "Berpikir Komputasional", type: "choice", question: "Metode berpikir komputasional yang mengabaikan detail-detail tidak penting dan berfokus pada informasi inti disebut...", options: ["Abstraksi", "Dekomposisi", "Pengenalan Pola", "Algoritma"], correct: 0 },
+                { id: 102, topic: "Berpikir Komputasional", type: "short", question: "Struktur data linier yang menerapkan prinsip LIFO (Last In First Out) dinamakan...", correct_answer: "STACK" },
+                { id: 103, topic: "Berpikir Komputasional", type: "match", question: "Cocokkan pola logika berikut dengan metode berpikir komputasional yang sesuai!", pairs: [{ left: "Membagi resep kue", right: "Dekomposisi" }, { left: "Menghapus bumbu hiasan", right: "Abstraksi" }, { left: "Melihat pola cuaca mendung", right: "Pengenalan Pola" }] },
+                { id: 104, topic: "Berpikir Komputasional", type: "order", question: "Urutkan tahapan algoritma pencarian biner (Binary Search) yang benar!", items: ["Urutkan seluruh elemen data", "Cari nilai elemen tengah", "Bandingkan nilai sasaran", "Sempitkan area pencarian"] }
+            ],
+            systems: [
+                { id: 201, topic: "Sistem Komputer", type: "choice", question: "Komponen fisik komputer yang dapat disentuh dan dilihat secara langsung dikelompokkan ke dalam istilah...", options: ["Software", "Hardware", "Brainware", "Firmware"], correct: 1 },
+                { id: 202, topic: "Sistem Komputer", type: "short", question: "Protokol standar transmisi data global yang digunakan untuk mengidentifikasi alamat gawai di internet dinamakan alamat...", correct_answer: "IP" },
+                { id: 203, topic: "Sistem Komputer", type: "match", question: "Cocokkan komponen perangkat keras dengan kategori port operasinya!", pairs: [{ left: "RAM", right: "Memory Slot" }, { left: "Flashdisk", right: "Port USB" }, { left: "Kabel LAN", right: "Port RJ45" }] },
+                { id: 204, topic: "Sistem Komputer", type: "puzzle", question: "Susun kepingan komponen memori internal komputer (RAM/ROM)!", image_url: "https://placehold.co/300x300/0f172a/06b6d4?text=Memori+RAM" }
+            ],
+            algorithms: [
+                { id: 301, topic: "Algoritma", type: "choice", question: "Dalam penulisan diagram alir (flowchart), simbol berbentuk belah ketupat digunakan untuk merepresentasikan...", options: ["Proses", "Keputusan / Decision", "Mulai / Selesai", "Input / Output"], correct: 1 },
+                { id: 302, topic: "Algoritma", type: "short", question: "Struktur percabangan bersarang dalam bahasa pemrograman sering kali diwali oleh sintaks IF di dalam...", correct_answer: "IF" },
+                { id: 303, topic: "Algoritma", type: "order", question: "Urutkan struktur kode algoritma perulangan (For Loop) dari inisialisasi awal!", items: ["Tentukan nilai awal iterasi", "Evaluasi kondisi kebenaran loop", "Eksekusi blok instruksi", "Lakukan increment variabel"] }
+            ],
+            cybersecurity: [
+                { id: 401, topic: "Keamanan Siber", type: "choice", question: "Upaya penipuan digital untuk mencuri data sensitif seperti password bank melalui halaman login palsu disebut...", options: ["Phishing", "DDOS", "Ransomware", "Trojan"], correct: 0 },
+                { id: 402, topic: "Keamanan Siber", type: "short", question: "Sistem penyaringan jaringan yang berfungsi memblokir lalu lintas data asing yang mencurigakan dinamakan...", correct_answer: "FIREWALL" },
+                { id: 403, topic: "Keamanan Siber", type: "match", question: "Jodohkan tindakan keamanan digital berikut dengan tujuannya!", pairs: [{ left: "Enkripsi", right: "Menyamarkan isi pesan" }, { left: "2-Factor Auth (2FA)", right: "Verifikasi ganda akun" }, { left: "Anti-Malware", right: "Menghapus virus siber" }] }
+            ]
+        };
+
+        function loadMerdekaPreset(presetKey) {
+            const selectedData = merdekaPresets[presetKey];
+            if (selectedData) {
+                teacherQuestions = [...selectedData];
+                saveQuestionsToLocalStorage();
+                renderTeacherQuestionsList();
+                synth.playBeepComplete();
+                showCustomModal("🚀 PRESET BERHASIL DIMUAT", `Berhasil mengimpor ${selectedData.length} butir soal Kurikulum Merdeka untuk kuis. Seluruh soal telah dicentang otomatis!`, "✔️");
+            }
+        }
+
+        // AI Copilot Prompt Generator Tool
+        function generateAICopilotPrompt() {
+            const grade = document.getElementById("prompt-grade").value;
+            const topic = document.getElementById("prompt-topic").value.trim() || "Informatika Dasar";
+            const count = parseInt(document.getElementById("prompt-count").value) || 10;
+
+            const promptText = `Halo AI! Saya adalah Guru Informatika SMP/SMA. Bantu saya membuat ${count} soal kuis interaktif format Pilihan Ganda untuk ${grade} tentang "${topic}".
+
+PENTING: Tolong format jawaban Anda dalam format naskah kuis terstruktur presisi di bawah ini agar saya bisa langsung meng-copy dan mem-paste-kannya ke sistem generator kuis sekolah saya:
+
+1. [Tuliskan Teks Soal Di Sini]
+A. [Pilihan A]
+B. [Pilihan B]
+C. [Pilihan C]
+D. [Pilihan D]
+Kunci: [Tuliskan Huruf Kunci, contoh: A atau B atau C atau D]
+
+2. [Tuliskan Teks Soal Berikutnya]
+...dan seterusnya.
+
+Hindari memberikan kata pengantar, penjelasan teori, atau penutup. Cukup keluarkan format terstruktur murni di atas!`;
+
+            document.getElementById("prompt-result-textarea").value = promptText;
+            showCustomModal("🤖 PROMPT AI SIAP SALIN", "Gunakan teks di kolom bawah untuk memandu ChatGPT atau Gemini dalam menyusun soal secara sempurna.", "🎉");
+        }
+
+        // Toggle creator sub-tabs
+        function switchCreatorMode(mode) {
+            const btnManual = document.getElementById("btn-creator-manual");
+            const btnImport = document.getElementById("btn-creator-import");
+            const panelManual = document.getElementById("creator-manual-panel");
+            const panelImport = document.getElementById("creator-import-panel");
+
+            if (mode === 'manual') {
+                if (btnManual) btnManual.className = "px-4 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold transition-all";
+                if (btnImport) btnImport.className = "px-4 py-1.5 rounded-lg text-slate-400 font-semibold transition-all";
+                if (panelManual) panelManual.classList.remove("hidden");
+                if (panelImport) panelImport.classList.add("hidden");
+            } else {
+                if (btnImport) btnImport.className = "px-4 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-bold transition-all";
+                if (btnManual) btnManual.className = "px-4 py-1.5 rounded-lg text-slate-400 font-semibold transition-all";
+                if (panelImport) panelImport.classList.remove("hidden");
+                if (panelManual) panelManual.classList.add("hidden");
+            }
+        }
+
+        // Tab routing Pusat Kendali Guru
+        function switchTeacherTab(tabId) {
+            const tabConfig = document.getElementById("teacher-tab-config");
+            const tabQuestions = document.getElementById("teacher-tab-questions");
+            const tabHistory = document.getElementById("teacher-tab-history");
+            const tabCopilot = document.getElementById("teacher-tab-copilot");
+
+            if (tabConfig) tabConfig.classList.add("hidden");
+            if (tabQuestions) tabQuestions.classList.add("hidden");
+            if (tabHistory) tabHistory.classList.add("hidden");
+            if (tabCopilot) tabCopilot.classList.add("hidden");
+            
+            const targetTab = document.getElementById(tabId);
+            if (targetTab) targetTab.classList.remove("hidden");
+
+            // Unhighlight all tabs
+            const btnConfig = document.getElementById("btn-tab-config");
+            const btnQuestions = document.getElementById("btn-tab-questions");
+            const btnHistory = document.getElementById("btn-tab-history");
+            const btnCopilot = document.getElementById("btn-tab-copilot");
+
+            if (btnConfig) btnConfig.className = "px-4 py-3 rounded-t-xl border-b-2 border-transparent text-slate-400 font-bold hover:text-slate-200 transition-all";
+            if (btnQuestions) btnQuestions.className = "px-4 py-3 rounded-t-xl border-b-2 border-transparent text-slate-400 font-bold hover:text-slate-200 transition-all";
+            if (btnHistory) btnHistory.className = "px-4 py-3 rounded-t-xl border-b-2 border-transparent text-slate-400 font-bold hover:text-slate-200 transition-all";
+            if (btnCopilot) btnCopilot.className = "px-4 py-3 rounded-t-xl border-b-2 border-transparent text-slate-400 font-bold hover:text-slate-200 transition-all";
+
+            if (tabId === 'teacher-tab-config') {
+                if (btnConfig) btnConfig.className = "px-4 py-3 rounded-t-xl border-b-2 border-emerald-500 text-emerald-400 font-bold transition-all bg-emerald-500/5";
+            } else if (tabId === 'teacher-tab-questions') {
+                if (btnQuestions) btnQuestions.className = "px-4 py-3 rounded-t-xl border-b-2 border-emerald-500 text-emerald-400 font-bold transition-all bg-emerald-500/5";
+                renderTeacherQuestionsList();
+            } else if (tabId === 'teacher-tab-history') {
+                if (btnHistory) btnHistory.className = "px-4 py-3 rounded-t-xl border-b-2 border-emerald-500 text-emerald-400 font-bold transition-all bg-emerald-500/5";
+                renderHistoryClasses();
+            } else if (tabId === 'teacher-tab-copilot') {
+                if (btnCopilot) btnCopilot.className = "px-4 py-3 rounded-t-xl border-b-2 border-emerald-500 text-emerald-400 font-bold transition-all bg-emerald-500/5";
+            }
+        }
+
+        function toggleUserManual() {
+            const panel = document.getElementById("manual-panel");
+            if (panel) {
+                if (panel.classList.contains("hidden")) {
+                    panel.classList.remove("hidden");
+                    panel.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    panel.classList.add("hidden");
+                }
+            }
+        }
+
+        function openTeacherPortal() {
+            const manPanel = document.getElementById("manual-panel");
+            if (manPanel) manPanel.classList.add("hidden"); 
+            document.getElementById("screen-gate").classList.add("hidden");
+            document.getElementById("screen-teacher").classList.remove("hidden");
+            switchTeacherTab('teacher-tab-config'); 
             scrollToMainContainer();
         }
 
-        function scrollToMainContainer() {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+        function openStudentPortal() {
+            const manPanel = document.getElementById("manual-panel");
+            if (manPanel) manPanel.classList.add("hidden"); 
+            document.getElementById("screen-gate").classList.add("hidden");
+            document.getElementById("screen-student-gateway").classList.remove("hidden");
+            
+            // Resume states
+            const savedState = localStorage.getItem("cyber_nexus_interrupted_state");
+            const resumeBox = document.getElementById("student-resume-box");
+            if (resumeBox) {
+                if (savedState) {
+                    resumeBox.classList.remove("hidden");
+                } else {
+                    resumeBox.classList.add("hidden");
+                }
+            }
+
+            renderAvatarSelectionGrid();
+            initStudentPastAttempts();
+            scrollToMainContainer();
         }
 
-        window.addEventListener('keydown', function(event) {
-            if (event.key === "Escape") {
-                const manual = document.getElementById("manual-panel");
-                if (manual) manual.classList.add("hidden");
-                closeModalDialog();
-                closeConfirmDialog();
-                closeQuizPreviewModal();
+        function backToGate() {
+            document.getElementById("screen-teacher").classList.add("hidden");
+            document.getElementById("screen-student-gateway").classList.add("hidden");
+            document.getElementById("screen-gate").classList.remove("hidden");
+            document.getElementById("session-title-badge").classList.add("hidden");
+            scrollToMainContainer();
+        }
+
+        function testSystemAudio() {
+            synth.playBeepComplete();
+            showCustomModal("🔊 UJI AUDIO SUKSES", "Speaker dan Audio Context digital peramban Anda aktif dan merespon dengan sempurna.", "🎉");
+        }
+
+        function selectAllQuestions(checked) {
+            teacherQuestions.forEach(q => {
+                const chk = document.getElementById(`q-chk-${q.id}`);
+                if (chk) {
+                    const card = chk.closest(".q-card-item");
+                    if (card && !card.classList.contains("hidden")) {
+                        chk.checked = checked;
+                    }
+                }
+            });
+            updateSelectedQuestionsCount();
+        }
+
+        function updateSelectedQuestionsCount() {
+            let cnt = 0;
+            teacherQuestions.forEach(q => {
+                const chk = document.getElementById(`q-chk-${q.id}`);
+                if (chk && chk.checked) cnt++;
+            });
+            const countEl = document.getElementById("selected-questions-count");
+            if (countEl) {
+                countEl.innerText = `${cnt} Soal Terpilih`;
             }
-        });
+        }
     </script>
-</body>
-</html>
+
+    <!-- IMAGE LOCAL FILE UPLOAD & AUTO COMPRESSION ENGINE -->
+    <script>
+        function compressLocalImageFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        const maxDim = 300;
+
+                        if (width > height) {
+                            if (width > maxDim) {
+                                height = Math.round((height * maxDim) / width);
+                                width = maxDim;
+                            }
+                        } else {
+                            if (height > maxDim) {
+                                width = Math.round((width * maxDim) / height);
+                                height = maxDim;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        const base64 = canvas.toDataURL('image/jpeg', 0.6);
+                        resolve(base64);
+                    };
+                    img.onerror = (err) => reject(err);
+                };
+                reader.onerror = (err) => reject(err);
+            });
+        }
+
+        async function handlePuzzleLocalUpload(event, mode) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const base64 = await compressLocalImageFile(file);
+                if (mode === 'custom') {
+                    customUploadedPuzzleBase64 = base64;
+                    const previewBox = document.getElementById("puzzle-image-preview-box");
+                    const previewImg = document.getElementById("puzzle-image-preview-el");
+                    if (previewBox && previewImg) {
+                        previewImg.src = base64;
+                        previewBox.classList.remove("hidden");
+                    }
+                } else if (mode === 'inline') {
+                    inlineUploadedPuzzleBase64 = base64;
+                    const previewBox = document.getElementById("inline-puzzle-preview-box");
+                    const previewImg = document.getElementById("inline-puzzle-preview-el");
+                    if (previewBox && previewImg) {
+                        previewImg.src = base64;
+                        previewBox.classList.remove("hidden");
+                    }
+                }
+            } catch(e) {
+                showCustomModal("⚠️ GAGAL MEMPROSES GAMBAR", "Format gambar lokal tidak didukung oleh browser.", "⚠️");
+            }
+        }
+    </script>
+
+    <!-- QUESTION FILE IMPORT & EXPORT CONTROLLERS -->
+    <script>
+        function downloadQuestionsBackup() {
+            try {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(teacherQuestions, null, 2));
+                const dlAnchorElem = document.createElement('a');
+                dlAnchorElem.setAttribute("href", dataStr);
+                dlAnchorElem.setAttribute("download", "cyber_nexus_bank_soal.json");
+                document.body.appendChild(dlAnchorElem);
+                dlAnchorElem.click();
+                document.body.removeChild(dlAnchorElem);
+                showCustomModal("💾 BERKAS BERHASIL DIUNDUH", "Bank soal telah disimpan sebagai berkas cyber_nexus_bank_soal.json di komputer Anda.", "🎉");
+            } catch(e) {
+                showCustomModal("⚠️ EKSPOR GAGAL", "Gagal merakit file cadangan.", "⚠️");
+            }
+        }
+
+        function uploadQuestionsBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].question) {
+                        teacherQuestions = parsed;
+                        saveQuestionsToLocalStorage();
+                        renderTeacherQuestionsList();
+                        showCustomModal("✔️ PEMULIHAN BERHASIL", `Berhasil memuat dan menyinkronkan ${parsed.length} butir soal dari berkas cadangan offline.`, "✔️");
+                        event.target.value = "";
+                    } else {
+                        throw new Error();
+                    }
+                } catch (err) {
+                    showCustomModal("⚠️ FORMAT SALAH", "Berkas yang Anda unggah tidak cocok dengan format bank soal sistem!", "⚠️");
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+
+    <!-- BANK SOAL & AI IMPORTER INTERFACE -->
+    <script>
+        let currentQuestionFilter = 'all';
+
+        function filterTeacherQuestions(type) {
+            currentQuestionFilter = type;
+            const types = ['all', 'choice', 'short', 'match', 'order', 'puzzle'];
+            types.forEach(t => {
+                const btn = document.getElementById(`filter-${t}`);
+                if (btn) {
+                    if (t === type) {
+                        btn.className = "px-3.5 py-2 rounded-xl font-bold font-mono transition-all bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5";
+                    } else {
+                        btn.className = "px-3.5 py-2 rounded-xl font-bold font-mono transition-all bg-slate-900 text-slate-400 hover:text-slate-200 border border-transparent flex items-center gap-1.5";
+                    }
+                }
+            });
+            applyTeacherQuestionFilter();
+        }
+
+        function applyTeacherQuestionFilter() {
+            const cards = document.querySelectorAll(".q-card-item");
+            cards.forEach(card => {
+                if (currentQuestionFilter === 'all' || card.dataset.type === currentQuestionFilter) {
+                    card.classList.remove("hidden");
+                } else {
+                    card.classList.add("hidden");
+                }
+            });
+        }
+
+        function renderTeacherQuestionsList() {
+            const container = document.getElementById("teacher-questions-list-container");
+            if (!container) return;
+            container.innerHTML = "";
+
+            let counts = { all: teacherQuestions.length, choice: 0, short: 0, match: 0, order: 0, puzzle: 0 };
+            
+            teacherQuestions.forEach((q) => {
+                if (counts[q.type] !== undefined) counts[q.type]++;
+                
+                const div = document.createElement("div");
+                div.className = "q-card-item bg-slate-950 border border-slate-900 p-4 rounded-2xl text-xs space-y-2 relative hover:border-slate-700 transition-all";
+                div.dataset.type = q.type;
+
+                let typeLabel = "Lainnya";
+                if (q.type === 'choice') typeLabel = "🔤 Pilihan Ganda";
+                else if (q.type === 'short') typeLabel = "📝 Essay/Isian";
+                else if (q.type === 'match') typeLabel = "🔗 Mencocokkan";
+                else if (q.type === 'order') typeLabel = "🔢 Sorting";
+                else if (q.type === 'puzzle') typeLabel = "🧩 Puzzle Gambar";
+
+                div.innerHTML = `
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center gap-1.5">
+                            <input id="q-chk-${q.id}" type="checkbox" checked onchange="updateSelectedQuestionsCount()" class="w-4 h-4 rounded border-slate-800 bg-slate-900 text-emerald-500 focus:ring-0 cursor-pointer">
+                            <span class="bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 font-mono font-bold px-2 py-0.5 rounded-lg text-[8px] uppercase">${q.topic}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="bg-slate-900 text-slate-400 px-2 py-0.5 rounded-lg font-mono text-[8px] uppercase">${typeLabel}</span>
+                            <button onclick="confirmDeleteQuestion(${q.id})" class="text-rose-400 hover:text-rose-500 font-bold p-1"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+                    <p class="font-bold text-slate-200 leading-relaxed">${q.question}</p>
+                `;
+                container.appendChild(div);
+            });
+
+            // Update counts tags in Filter Buttons UI
+            const filterAllBtn = document.getElementById("filter-all");
+            if (filterAllBtn) filterAllBtn.innerHTML = `<span>🌌</span> All (Campur) (${counts.all})`;
+
+            const filterChoiceBtn = document.getElementById("filter-choice");
+            if (filterChoiceBtn) filterChoiceBtn.innerHTML = `<span>🔤</span> Pilihan Ganda (${counts.choice})`;
+
+            const filterShortBtn = document.getElementById("filter-short");
+            if (filterShortBtn) filterShortBtn.innerHTML = `<span>📝</span> Essay/Isian (${counts.short})`;
+
+            const filterMatchBtn = document.getElementById("filter-match");
+            if (filterMatchBtn) filterMatchBtn.innerHTML = `<span>🔗</span> Mencocokkan (${counts.match})`;
+
+            const filterOrderBtn = document.getElementById("filter-order");
+            if (filterOrderBtn) filterOrderBtn.innerHTML = `<span>🔢</span> Sorting (${counts.order})`;
+
+            const filterPuzzleBtn = document.getElementById("filter-puzzle");
+            if (filterPuzzleBtn) filterPuzzleBtn.innerHTML = `<span>🧩</span> Puzzle Gambar (${counts.puzzle})`;
+
+            applyTeacherQuestionFilter();
+            updateSelectedQuestionsCount();
+        }
+
+        function toggleCustomFields() {
+            const type = document.getElementById("custom-q-type").value;
+            document.getElementById("fields-choice").classList.add("hidden");
+            document.getElementById("fields-short").classList.add("hidden");
+            document.getElementById("fields-match").classList.add("hidden");
+            document.getElementById("fields-order").classList.add("hidden");
+            document.getElementById("fields-puzzle").classList.add("hidden");
+
+            if (type === 'choice') document.getElementById("fields-choice").classList.remove("hidden");
+            else if (type === 'short') document.getElementById("fields-short").classList.remove("hidden");
+            else if (type === 'match') document.getElementById("fields-match").classList.remove("hidden");
+            else if (type === 'order') document.getElementById("fields-order").classList.remove("hidden");
+            else if (type === 'puzzle') {
+                document.getElementById("fields-puzzle").classList.remove("hidden");
+                customUploadedPuzzleBase64 = null;
+                document.getElementById("puzzle-image-preview-box").classList.add("hidden");
+                document.getElementById("custom-puzzle-file").value = "";
+            }
+        }
+
+        function saveCustomQuestion() {
+            const type = document.getElementById("custom-q-type").value;
+            const topic = document.getElementById("custom-q-topic").value.trim() || "Informatika";
+            const text = document.getElementById("custom-q-text").value.trim();
+
+            if (!text) {
+                showCustomModal("⚠️ PEMBUATAN GAGAL", "Harap isikan narasi pertanyaan terlebih dahulu!", "⚠️");
+                return;
+            }
+
+            let newQ = { id: Date.now(), topic, type, question: text };
+
+            if (type === 'choice') {
+                const optA = document.getElementById("custom-opt-a").value.trim();
+                const optB = document.getElementById("custom-opt-b").value.trim();
+                const optC = document.getElementById("custom-opt-c").value.trim();
+                const optD = document.getElementById("custom-opt-d").value.trim();
+                const correctIdx = parseInt(document.getElementById("custom-choice-correct").value);
+
+                if (!optA || !optB) {
+                    showCustomModal("⚠️ PEMBUATAN GAGAL", "Harap isi minimal opsi A dan B!", "⚠️");
+                    return;
+                }
+                newQ.options = [optA, optB, optC || "-", optD || "-"];
+                newQ.correct = correctIdx;
+            } else if (type === 'short') {
+                const val = document.getElementById("custom-short-correct").value.trim().toUpperCase();
+                if (!val) {
+                    showCustomModal("⚠️ PEMBUATAN GAGAL", "Harap isikan jawaban kunci isian singkat!", "⚠️");
+                    return;
+                }
+                newQ.correct_answer = val;
+            } else if (type === 'match') {
+                const l1 = document.getElementById("custom-match-l1").value.trim();
+                const r1 = document.getElementById("custom-match-r1").value.trim();
+                const l2 = document.getElementById("custom-match-l2").value.trim();
+                const r2 = document.getElementById("custom-match-r2").value.trim();
+                const l3 = document.getElementById("custom-match-l3").value.trim();
+                const r3 = document.getElementById("custom-match-r3").value.trim();
+
+                if (!l1 || !r1) {
+                    showCustomModal("⚠️ PEMBUATAN GAGAL", "Harap isikan minimal pasangan kesatu!", "⚠️");
+                    return;
+                }
+                newQ.pairs = [
+                    { left: l1, right: r1 }
+                ];
+                if (l2 && r2) newQ.pairs.push({ left: l2, right: r2 });
+                if (l3 && r3) newQ.pairs.push({ left: l3, right: r3 });
+            } else if (type === 'order') {
+                const o1 = document.getElementById("custom-order-1").value.trim();
+                const o2 = document.getElementById("custom-order-2").value.trim();
+                const o3 = document.getElementById("custom-order-3").value.trim();
+                const o4 = document.getElementById("custom-order-4").value.trim();
+
+                if (!o1 || !o2) {
+                    showCustomModal("⚠️ PEMBUATAN GAGAL", "Harap isi langkah minimal 1 dan 2!", "⚠️");
+                    return;
+                }
+                newQ.items = [o1, o2];
+                if (o3) newQ.items.push(o3);
+                if (o4) newQ.items.push(o4);
+            } else if (type === 'puzzle') {
+                if (customUploadedPuzzleBase64) {
+                    newQ.image_url = customUploadedPuzzleBase64;
+                } else {
+                    const imgUrl = document.getElementById("custom-puzzle-image").value.trim();
+                    newQ.image_url = imgUrl || "https://placehold.co/300x300/0f172a/06b6d4?text=Sirkuit+Server";
+                }
+            }
+
+            teacherQuestions.push(newQ);
+            saveQuestionsToLocalStorage();
+            renderTeacherQuestionsList();
+            clearCustomQuestionForm();
+            showCustomModal("🎉 SOAL BARU BERHASIL DISIMPAN", "Soal kustom Anda telah diarsipkan ke bank soal kelas.", "✔️");
+        }
+
+        function clearCustomQuestionForm() {
+            document.getElementById("custom-q-text").value = "";
+            document.getElementById("custom-q-topic").value = "";
+            document.getElementById("custom-opt-a").value = "";
+            document.getElementById("custom-opt-b").value = "";
+            document.getElementById("custom-opt-c").value = "";
+            document.getElementById("custom-opt-d").value = "";
+            document.getElementById("custom-short-correct").value = "";
+            document.getElementById("custom-match-l1").value = "";
+            document.getElementById("custom-match-r1").value = "";
+            document.getElementById("custom-match-l2").value = "";
+            document.getElementById("custom-match-r2").value = "";
+            document.getElementById("custom-match-l3").value = "";
+            document.getElementById("custom-match-r3").value = "";
+            document.getElementById("custom-order-1").value = "";
+            document.getElementById("custom-order-2").value = "";
+            document.getElementById("custom-order-3").value = "";
+            document.getElementById("custom-order-4").value = "";
+            document.getElementById("custom-puzzle-image").value = "";
+            customUploadedPuzzleBase64 = null;
+            const previewBox = document.getElementById("puzzle-image-preview-box");
+            if (previewBox) previewBox.classList.add("hidden");
+            const fileInput = document.getElementById("custom-puzzle-file");
+            if (fileInput) fileInput.value = "";
+        }
+
+        function clearImporterText() {
+            document.getElementById("importer-raw-text").value = "";
+        }
+
+        function processRawImportText() {
+            const raw = document.getElementById("importer-raw-text").value;
+            if (!raw.trim()) return;
+
+            try {
+                const lines = raw.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+                let text = "Soal Kustom AI";
+                let opts = [];
+                let correct = 0;
+
+                lines.forEach(line => {
+                    if (line.match(/^\d+\./)) {
+                        text = line.replace(/^\d+\./, "").trim();
+                    } else if (line.toUpperCase().startsWith("A.")) {
+                        opts.push(line.replace(/^[Aa]\./, "").trim());
+                    } else if (line.toUpperCase().startsWith("B.")) {
+                        opts.push(line.replace(/^[Bb]\./, "").trim());
+                    } else if (line.toUpperCase().startsWith("C.")) {
+                        opts.push(line.replace(/^[Cc]\./, "").trim());
+                    } else if (line.toUpperCase().startsWith("D.")) {
+                        opts.push(line.replace(/^[Dd]\./, "").trim());
+                    } else if (line.toUpperCase().startsWith("KUNCI:")) {
+                        const k = line.replace(/^KUNCI:/i, "").trim().toUpperCase();
+                        if (k === "A") correct = 0;
+                        else if (k === "B") correct = 1;
+                        else if (k === "C") correct = 2;
+                        else if (k === "D") correct = 3;
+                    }
+                });
+
+                if (opts.length < 2) throw new Error("Format opsi minimum gagal dipenuhi.");
+
+                teacherQuestions.push({
+                    id: Date.now(),
+                    topic: "Impor AI",
+                    type: "choice",
+                    question: text,
+                    options: opts,
+                    correct: correct
+                });
+
+                saveQuestionsToLocalStorage();
+                renderTeacherQuestionsList();
+                document.getElementById("importer-raw-text").value = "";
+                showCustomModal("✔️ IMPOR BERHASIL", "Teks naskah Anda berhasil diproses dan dikonversi menjadi format pilihan ganda.", "🎉");
+            } catch (e) {
+                showCustomModal("⚠️ FORMAT GAGAL", "Gagal memproses naskah, pastikan format nomor dan pilihan A/B/C/D tertulis secara teratur.", "⚠️");
+            }
+        }
+
+        function openQuizPreviewModal() {
+            editingPreviewId = null;
+            editingPreviewType = null;
+            renderPreviewList();
+            document.getElementById("preview-modal-wrapper").classList.remove("hidden");
+        }
+    </script>
+
+    <script>
+        function renderPreviewList() {
+            const container = document.getElementById("preview-questions-container");
+            if (!container) return;
+            container.innerHTML = "";
+
+            let count = 0;
+            teacherQuestions.forEach((q) => {
+                const chk = document.getElementById(`q-chk-${q.id}`);
+                if (!chk || !chk.checked) return;
+
+                count++;
+                const div = document.createElement("div");
+                div.className = "bg-slate-950 border border-slate-900 p-4 rounded-2xl text-xs space-y-3 relative";
+
+                if (editingPreviewId === q.id) {
+                    const currentType = editingPreviewType || q.type;
+                    
+                    let dynamicFieldsHtml = "";
+                    if (currentType === 'choice') {
+                        const opt0 = q.options?.[0] || "";
+                        const opt1 = q.options?.[1] || "";
+                        const opt2 = q.options?.[2] || "";
+                        const opt3 = q.options?.[3] || "";
+                        dynamicFieldsHtml = `
+                            <div class="grid grid-cols-2 gap-2 mt-2">
+                                <input id="inline-opt-0" type="text" value="${opt0}" placeholder="Opsi A" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                                <input id="inline-opt-1" type="text" value="${opt1}" placeholder="Opsi B" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                                <input id="inline-opt-2" type="text" value="${opt2}" placeholder="Opsi C" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                                <input id="inline-opt-3" type="text" value="${opt3}" placeholder="Opsi D" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                            </div>
+                            <div class="mt-2 flex items-center gap-2">
+                                <span>Kunci Benar:</span>
+                                <select id="inline-correct" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200">
+                                    <option value="0" ${q.correct === 0 ? 'selected' : ''}>A</option>
+                                    <option value="1" ${q.correct === 1 ? 'selected' : ''}>B</option>
+                                    <option value="2" ${q.correct === 2 ? 'selected' : ''}>C</option>
+                                    <option value="3" ${q.correct === 3 ? 'selected' : ''}>D</option>
+                                </select>
+                            </div>
+                        `;
+                    } else if (currentType === 'short') {
+                        const ans = q.correct_answer || "";
+                        dynamicFieldsHtml = `
+                            <div class="mt-2">
+                                <input id="inline-short-ans" type="text" value="${ans}" placeholder="Jawaban Singkat" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200">
+                            </div>
+                        `;
+                    } else if (currentType === 'match') {
+                        const p1_l = q.pairs?.[0]?.left || "";
+                        const p1_r = q.pairs?.[0]?.right || "";
+                        const p2_l = q.pairs?.[1]?.left || "";
+                        const p2_r = q.pairs?.[1]?.right || "";
+                        const p3_l = q.pairs?.[2]?.left || "";
+                        const p3_r = q.pairs?.[2]?.right || "";
+                        dynamicFieldsHtml = `
+                            <div class="space-y-1.5 mt-2">
+                                <div class="flex gap-2">
+                                    <input id="inline-match-l1" type="text" value="${p1_l}" placeholder="Kiri 1" class="w-1/2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                                    <input id="inline-match-r1" type="text" value="${p1_r}" placeholder="Kanan 1" class="w-1/2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                                </div>
+                                <div class="flex gap-2">
+                                    <input id="inline-match-l2" type="text" value="${p2_l}" placeholder="Kiri 2" class="w-1/2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                                    <input id="inline-match-r2" type="text" value="${p2_r}" placeholder="Kanan 2" class="w-1/2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                                </div>
+                                <div class="flex gap-2">
+                                    <input id="inline-match-l3" type="text" value="${p3_l}" placeholder="Kiri 3" class="w-1/2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                                    <input id="inline-match-r3" type="text" value="${p3_r}" placeholder="Kanan 3" class="w-1/2 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+                                </div>
+                            </div>
+                        `;
+                    } else if (currentType === 'order') {
+                        const o1 = q.items?.[0] || "";
+                        const o2 = q.items?.[1] || "";
+                        const o3 = q.items?.[2] || "";
+                        const o4 = q.items?.[3] || "";
+                        dynamicFieldsHtml = `
+                            <div class="grid grid-cols-2 gap-2 mt-2">
+                                <input id="inline-order-1" type="text" value="${o1}" placeholder="Langkah 1" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                                <input id="inline-order-2" type="text" value="${o2}" placeholder="Langkah 2" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                                <input id="inline-order-3" type="text" value="${o3}" placeholder="Langkah 3" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                                <input id="inline-order-4" type="text" value="${o4}" placeholder="Langkah 4" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200">
+                            </div>
+                        `;
+                    } else if (currentType === 'puzzle') {
+                        const url = q.image_url || "";
+                        const isBase64 = url.startsWith("data:");
+                        dynamicFieldsHtml = `
+                            <div class="space-y-2 mt-2">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-lg">
+                                        <label class="block text-[8px] font-bold text-emerald-400 font-mono">📁 Ganti Berkas Gambar Lokal:</label>
+                                        <input id="inline-puzzle-file" type="file" accept="image/*" onchange="handlePuzzleLocalUpload(event, 'inline')" class="text-[9px]">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[8px] font-bold text-cyan-400 font-mono">🌐 Atau Ganti Tautan URL:</label>
+                                        <input id="inline-puzzle-url" type="text" value="${isBase64 ? '' : url}" placeholder="URL Gambar Semesta" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200">
+                                    </div>
+                                </div>
+                                <div id="inline-puzzle-preview-box" class="${url ? '' : 'hidden'} bg-slate-900 border border-slate-850 p-1.5 rounded-lg max-w-[80px] mx-auto text-center">
+                                    <img id="inline-puzzle-preview-el" src="${url}" class="w-full h-auto rounded border border-slate-800">
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    div.innerHTML = `
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-pink-400">✏️ EDITING INLINE (SOAL #${count})</span>
+                                <div class="flex gap-2">
+                                    <button onclick="saveInlineEdit(${q.id})" class="bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold px-3 py-1 rounded-lg text-[10px] transition-all">💾 Simpan</button>
+                                    <button onclick="cancelInlineEdit()" class="bg-slate-800 hover:bg-slate-750 text-slate-300 px-3 py-1 rounded-lg text-[10px] transition-all">❌ Batal</button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div>
+                                    <label class="block text-[9px] text-slate-400 font-bold uppercase mb-1">Elemen / Topik</label>
+                                    <input id="inline-topic" type="text" value="${q.topic}" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-[9px] text-slate-400 font-bold uppercase mb-1">Jenis Tantangan</label>
+                                    <select id="inline-type" onchange="changeInlineType(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200">
+                                        <option value="choice" ${currentType === 'choice' ? 'selected' : ''}>Pilihan Ganda</option>
+                                        <option value="short" ${currentType === 'short' ? 'selected' : ''}>Isian Singkat</option>
+                                        <option value="match" ${currentType === 'match' ? 'selected' : ''}>Menjodohkan</option>
+                                        <option value="order" ${currentType === 'order' ? 'selected' : ''}>Urutan</option>
+                                        <option value="puzzle" ${currentType === 'puzzle' ? 'selected' : ''}>Puzzle</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[9px] text-slate-400 font-bold uppercase mb-1">Teks Pertanyaan / Deskripsi</label>
+                                <textarea id="inline-text" rows="2" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 text-xs">${q.question}</textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-[9px] text-slate-400 font-bold uppercase font-mono">Kunci & Pilihan Konfigurasi</label>
+                                ${dynamicFieldsHtml}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    let answerDetail = "";
+                    if (q.type === 'choice') {
+                        answerDetail = `<div class="grid grid-cols-2 gap-2 text-slate-400 mt-2 font-mono text-[11px]">
+                            <div class="${q.correct === 0 ? 'text-emerald-400 font-bold':''}">A: ${q.options?.[0] || ''}</div>
+                            <div class="${q.correct === 1 ? 'text-emerald-400 font-bold':''}">B: ${q.options?.[1] || ''}</div>
+                            <div class="${q.correct === 2 ? 'text-emerald-400 font-bold':''}">C: ${q.options?.[2] || ''}</div>
+                            <div class="${q.correct === 3 ? 'text-emerald-400 font-bold':''}">D: ${q.options?.[3] || ''}</div>
+                        </div>`;
+                    } else if (q.type === 'short') {
+                        answerDetail = `<p class="mt-1 text-cyan-400 font-mono text-[11px]">Kunci Isian: "${q.correct_answer || ''}"</p>`;
+                    } else if (q.type === 'match') {
+                        answerDetail = `<p class="mt-1 text-cyan-400 font-mono text-[11px]">Pasangan Benar: ${(q.pairs || []).map(p => `${p.left} ➔ ${p.right}`).join(', ')}</p>`;
+                    } else if (q.type === 'order') {
+                        answerDetail = `<p class="mt-1 text-cyan-400 font-mono text-[11px]">Urutan Benar: ${(q.items || []).join(' ➔ ')}</p>`;
+                    } else if (q.type === 'puzzle') {
+                        const isBase64 = q.image_url?.startsWith("data:");
+                        answerDetail = `<p class="mt-1 text-cyan-400 font-mono text-[11px]">Puzzle: ${isBase64 ? '<span class="text-emerald-400">[Gambar Terkompres Offline]</span>' : `<span class="text-slate-500 text-[10px] break-all">${q.image_url || ''}</span>`}</p>`;
+                    }
+
+                    div.innerHTML = `
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="bg-slate-900 px-2.5 py-0.5 text-[9px] font-mono rounded-lg text-slate-400 uppercase">Tantangan ${count} • ${q.type} • ${q.topic}</span>
+                            <div class="flex gap-2">
+                                <button onclick="startInlineEdit(${q.id})" class="bg-cyan-600/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500 hover:text-slate-950 px-2.5 py-1 rounded-lg text-[10px] transition-all">✏️ Edit Soal</button>
+                                <button onclick="confirmDeleteQuestion(${q.id})" class="bg-rose-900/20 text-rose-300 border border-rose-500/30 hover:
