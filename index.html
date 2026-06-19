@@ -628,10 +628,10 @@
                     <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-900 flex flex-wrap items-center justify-between gap-3">
                         <span class="text-[10px] font-mono text-slate-400 font-bold">MANAJEMEN CADANGAN BERKAS OFFLINE:</span>
                         <div class="flex flex-wrap gap-2">
-                            <button onclick="downloadQuestionsBackup()" class="bg-emerald-600 hover:bg-emerald-500 text-slate-950 px-4 py-2.5 rounded-xl font-black transition-all text-[10px] uppercase font-mono flex items-center gap-1.5 shadow-md">
+                            <button onclick="downloadQuestionsBackup()" class="bg-emerald-600 hover:bg-emerald-500 text-slate-950 px-4 py-2.5 rounded-xl font-black transition-all text-[10px] uppercase font-mono flex items-center gap-1.5 shadow-md shadow-emerald-550/10">
                                 <i class="fa-solid fa-file-arrow-down"></i> Unduh Berkas JSON (.json)
                             </button>
-                            <label class="bg-cyan-600 hover:bg-cyan-500 text-slate-950 px-4 py-2.5 rounded-xl font-black transition-all text-[10px] uppercase font-mono flex items-center gap-1.5 shadow-md cursor-pointer">
+                            <label class="bg-cyan-600 hover:bg-cyan-500 text-slate-950 px-4 py-2.5 rounded-xl font-black transition-all text-[10px] uppercase font-mono flex items-center gap-1.5 shadow-md shadow-cyan-550/10 cursor-pointer">
                                 <i class="fa-solid fa-file-arrow-up"></i> Unggah Berkas JSON
                                 <input type="file" accept=".json" onchange="uploadQuestionsBackup(event)" class="hidden">
                             </label>
@@ -993,9 +993,9 @@
 
     <!-- UNIFIED REST & FIREBASE CLOUD SYNC ENGINE -->
     <script>
-        // Dedicated, unthrottled bucket ID for Dwi Mustika's CYBER NEXUS (avoids rate limits!)
-        const primaryBucketUrl = "https://kvdb.io/cybernexus_dwi_mustika_2026_v4";
-        const backupBucketUrl = "https://kvdb.io/cybernexus_backup_pool_v4";
+        // Dedicated, unthrottled bucket ID for Dwi Mustika's CYBER NEXUS (exactly 20 characters, avoids rate limits!)
+        const primaryBucketUrl = "https://kvdb.io/cybNxMustika2026v400";
+        const backupBucketUrl = "https://kvdb.io/cybernexusbackupv4000";
 
         // Helper to perform simple requests to completely bypass CORS preflight handshakes on GitHub Pages
         async function fetchSimpleRequest(url, method, bodyData) {
@@ -1255,7 +1255,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
 
         let db = null;
         let auth = null;
@@ -2922,8 +2921,8 @@
                     row.innerHTML = `
                         <span class="order-text font-semibold">${text}</span>
                         <div class="flex gap-1.5">
-                            <button onclick="moveOrderItem(this, 'up')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400">▲</button>
-                            <button onclick="moveOrderItem(this, 'down')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400">▼</button>
+                            <button onclick="moveOrderItem(this, 'up')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▲</button>
+                            <button onclick="moveOrderItem(this, 'down')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▼</button>
                         </div>
                     `;
                     list.appendChild(row);
@@ -3308,6 +3307,7 @@
             generatePersonalSiftQuote(studentList);
         }
 
+        // Taktis Individu
         function generatePersonalSiftQuote(studentList) {
             const container = document.getElementById("personal-rank-alert-container");
             if (!container) return;
