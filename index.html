@@ -197,7 +197,7 @@
                 </div>
             </div>
 
-            <!-- Portal Buttons Grid -->
+            <!-- Portal Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Portal Guru -->
                 <button onclick="openTeacherPortal()" class="group relative bg-slate-900/50 hover:bg-emerald-950/20 border border-slate-800 hover:border-emerald-500/50 p-6 rounded-2xl text-left transition-all duration-300 shadow-xl overflow-hidden hover:scale-[1.03] flex items-start gap-4">
@@ -993,11 +993,11 @@
 
     <!-- UNIFIED REST & FIREBASE CLOUD SYNC ENGINE -->
     <script>
-        // Dedicated, unthrottled bucket ID for Dwi Mustika's CYBER NEXUS (exactly 20 characters, avoids rate limits!)
+        // Dedicated, unthrottled bucket ID for Dwi Mustika's CYBER NEXUS (Exactly 20 alphanumeric characters)
         const primaryBucketUrl = "https://kvdb.io/cybNxMustika2026v400";
-        const backupBucketUrl = "https://kvdb.io/cybernexusbackupv4000";
+        const backupBucketUrl = "https://kvdb.io/cybNxBackupv40002026";
 
-        // Helper to perform simple requests to completely bypass CORS preflight handshakes on GitHub Pages
+        // Helper to perform simple requests to completely bypass CORS preflight handshakes on GitHub Pages/Netlify
         async function fetchSimpleRequest(url, method, bodyData) {
             const options = {
                 method: method,
@@ -1005,7 +1005,7 @@
             };
             if (bodyData) {
                 options.body = typeof bodyData === 'string' ? bodyData : JSON.stringify(bodyData);
-                // text/plain Content-Type bypasses browser CORS preflight handshakes entirely!
+                // text/plain Content-Type bypasses browser CORS preflight OPTIONS requests!
                 options.headers = {
                     'Content-Type': 'text/plain'
                 };
@@ -1013,33 +1013,65 @@
             return await fetch(url, options);
         }
 
-        // REST Session Sync (Bypasses CORS and implements auto-fallback)
+        // REST Session Sync (Using PUT for strict state overwrites, ensuring no nested arrays are formed)
         window.cloudSaveSession = async function(session) {
+            const dataStr = JSON.stringify(session);
             try {
-                const res = await fetchSimpleRequest(`${primaryBucketUrl}/cybernexus_v4_session_${session.code}`, 'POST', session);
+                // PUT method to directly overwrite the key state on kvdb.io
+                const res = await fetch(`${primaryBucketUrl}/cybernexus_v4_session_${session.code}`, {
+                    method: 'PUT',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: dataStr
+                });
                 if (res.ok) {
-                    console.log("Sesi berhasil diunggah ke primary cloud REST.");
+                    console.log("Sesi berhasil diunggah ke primary cloud REST (PUT).");
                     return;
                 }
-                throw new Error("Primary cloud sync failed");
+                throw new Error("Primary PUT failed");
             } catch(e) {
-                console.warn("Primary REST gagal, menulis ke Backup Pool...", e);
+                console.warn("Primary PUT gagal, menulis ke Backup Pool...", e);
                 try {
-                    await fetchSimpleRequest(`${backupBucketUrl}/cybernexus_v4_session_${session.code}`, 'POST', session);
-                    console.log("Sesi berhasil diunggah ke backup cloud REST.");
+                    await fetch(`${backupBucketUrl}/cybernexus_v4_session_${session.code}`, {
+                        method: 'PUT',
+                        mode: 'cors',
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        },
+                        body: dataStr
+                    });
+                    console.log("Sesi berhasil diunggah ke backup cloud REST (PUT).");
                 } catch(err2) {
                     console.error("Kedua REST server gagal disinkronkan:", err2);
                 }
             }
         };
 
+        // REST Session Load with auto-unpacking larik (array) to ensure absolute 100% failover
         window.cloudGetSession = async function(sessionCode) {
+            const unpackSessionData = (text) => {
+                try {
+                    const parsed = JSON.parse(text);
+                    if (Array.isArray(parsed)) {
+                        // If stored as a list (legacy/incorrect POST fallback), take the last appended item
+                        return parsed[parsed.length - 1];
+                    }
+                    return parsed;
+                } catch(e) {
+                    console.error("Gagal mendecode session data:", e);
+                    return null;
+                }
+            };
+
             // Attempt from primary
             try {
                 const res = await fetch(`${primaryBucketUrl}/cybernexus_v4_session_${sessionCode}`);
                 if (res.ok) {
                     const text = await res.text();
-                    return JSON.parse(text);
+                    const session = unpackSessionData(text);
+                    if (session) return session;
                 }
             } catch(e) {
                 console.warn("Gagal membaca sesi dari Primary, mencoba Backup...", e);
@@ -1050,7 +1082,8 @@
                 const res = await fetch(`${backupBucketUrl}/cybernexus_v4_session_${sessionCode}`);
                 if (res.ok) {
                     const text = await res.text();
-                    return JSON.parse(text);
+                    const session = unpackSessionData(text);
+                    if (session) return session;
                 }
             } catch(e) {
                 console.error("Gagal membaca sesi dari kedua REST database:", e);
@@ -1058,7 +1091,7 @@
             return null;
         };
 
-        // REST Score Sync (Auto-resolve lists and update without preflight blocking)
+        // REST Score Sync (Using flat score arrays with PUT overwriting to prevent list stacking)
         window.cloudSubmitScore = async function(record) {
             const primaryUrl = `${primaryBucketUrl}/cybernexus_v4_scores_${record.sessionCode}`;
             const backupUrl = `${backupBucketUrl}/cybernexus_v4_scores_${record.sessionCode}`;
@@ -1069,7 +1102,15 @@
                     const res = await fetch(targetUrl);
                     if (res.ok) {
                         const text = await res.text();
-                        currentScores = JSON.parse(text);
+                        const parsed = JSON.parse(text);
+                        if (Array.isArray(parsed)) {
+                            // Unpack if stored inside nested list legacy modes
+                            if (parsed.length > 0 && Array.isArray(parsed[parsed.length - 1])) {
+                                currentScores = parsed[parsed.length - 1];
+                            } else {
+                                currentScores = parsed;
+                            }
+                        }
                     }
                 } catch(e) {}
 
@@ -1080,7 +1121,15 @@
                     currentScores.push(record);
                 }
 
-                await fetchSimpleRequest(targetUrl, 'POST', currentScores);
+                // Overwrite score state using PUT
+                await fetch(targetUrl, {
+                    method: 'PUT',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: JSON.stringify(currentScores)
+                });
             }
 
             try {
@@ -1097,7 +1146,7 @@
             }
         };
 
-        // REST Polling Engine with automated server failover
+        // REST Polling Engine with automated server failover and list unpacking support
         let restPollingTimer = null;
         window.startRESTScoresPolling = function(sessionCode, callback) {
             if (restPollingTimer) clearInterval(restPollingTimer);
@@ -1105,11 +1154,26 @@
             restPollingTimer = setInterval(poll, 4000);
 
             async function poll() {
+                const parseScores = (text) => {
+                    try {
+                        const parsed = JSON.parse(text);
+                        if (Array.isArray(parsed)) {
+                            if (parsed.length > 0 && Array.isArray(parsed[parsed.length - 1])) {
+                                return parsed[parsed.length - 1]; // Unpack legacy POST array nested lists
+                            }
+                            return parsed;
+                        }
+                        return [];
+                    } catch(e) {
+                        return [];
+                    }
+                };
+
                 try {
                     const res = await fetch(`${primaryBucketUrl}/cybernexus_v4_scores_${sessionCode}`);
                     if (res.ok) {
                         const text = await res.text();
-                        const data = JSON.parse(text);
+                        const data = parseScores(text);
                         callback(data);
                         return;
                     }
@@ -1121,7 +1185,7 @@
                     const res = await fetch(`${backupBucketUrl}/cybernexus_v4_scores_${sessionCode}`);
                     if (res.ok) {
                         const text = await res.text();
-                        const data = JSON.parse(text);
+                        const data = parseScores(text);
                         callback(data);
                     }
                 } catch(e) {
@@ -3501,7 +3565,7 @@
                     }
                 }
 
-                showCustomModal("🛑 GAME DIAKHIRI", "Akses pendaftaran siswa baru untuk kode " + code + " telah resmi dihentikan.", "⚠️");
+                showCustomModal("🛑 GAME DIAKHIRI", "Akses pendaftaran siswa baru untuk kode " + activeSession.code + " telah resmi dihentikan.", "⚠️");
                 renderHistoryClasses();
             }
         }
