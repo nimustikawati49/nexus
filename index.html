@@ -199,7 +199,7 @@
             <!-- Portal Buttons Grid (Futuristic Cards) -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Portal Guru -->
-                <button onclick="openTeacherPortal()" class="group relative bg-slate-900/50 hover:bg-emerald-950/20 border border-slate-880 hover:border-emerald-500/50 p-6 rounded-2xl text-left transition-all duration-300 shadow-xl overflow-hidden hover:scale-[1.03] flex items-start gap-4">
+                <button onclick="openTeacherPortal()" class="group relative bg-slate-900/50 hover:bg-emerald-950/20 border border-slate-800 hover:border-emerald-500/50 p-6 rounded-2xl text-left transition-all duration-300 shadow-xl overflow-hidden hover:scale-[1.03] flex items-start gap-4">
                     <div class="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <div class="w-14 h-14 rounded-2xl bg-slate-950 group-hover:bg-emerald-500/20 text-slate-400 group-hover:text-emerald-400 flex items-center justify-center transition-all duration-300 border border-slate-850 group-hover:border-emerald-500/30 shrink-0">
                         <i class="fa-solid fa-network-wired text-2xl"></i>
@@ -212,7 +212,7 @@
                 </button>
 
                 <!-- Portal Siswa -->
-                <button onclick="openStudentPortal()" class="group relative bg-slate-900/50 hover:bg-cyan-950/20 border border-slate-880 hover:border-cyan-500/50 p-6 rounded-2xl text-left transition-all duration-300 shadow-xl overflow-hidden hover:scale-[1.03] flex items-start gap-4">
+                <button onclick="openStudentPortal()" class="group relative bg-slate-900/50 hover:bg-cyan-950/20 border border-slate-800 hover:border-cyan-500/50 p-6 rounded-2xl text-left transition-all duration-300 shadow-xl overflow-hidden hover:scale-[1.03] flex items-start gap-4">
                     <div class="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <div class="w-14 h-14 rounded-2xl bg-slate-950 group-hover:bg-cyan-500/20 text-slate-400 group-hover:text-cyan-400 flex items-center justify-center transition-all duration-300 border border-slate-850 group-hover:border-cyan-500/30 shrink-0">
                         <i class="fa-solid fa-gamepad text-2xl"></i>
@@ -1067,12 +1067,12 @@
 
     <!-- UNIFIED REST & FIREBASE CLOUD SYNC ENGINE -->
     <script>
-        const publicBucketUrl = "https://kvdb.io/cybNxClsrmSyncV32026";
+        const publicBucketUrl = "https://kvdb.io/Fd55uogXyxYdnXJvnyN8Xo";
 
         // REST Session Sync (Menggunakan PUT untuk mendaftarkan key di kvdb)
         window.cloudSaveSession = async function(session) {
             try {
-                await fetch(`${publicBucketUrl}/session_${session.code}`, {
+                await fetch(`${publicBucketUrl}/cybernexus_v3_session_${session.code}`, {
                     method: 'PUT',
                     body: JSON.stringify(session)
                 });
@@ -1084,7 +1084,7 @@
 
         window.cloudGetSession = async function(sessionCode) {
             try {
-                const res = await fetch(`${publicBucketUrl}/session_${sessionCode}`);
+                const res = await fetch(`${publicBucketUrl}/cybernexus_v3_session_${sessionCode}`);
                 if (res.ok) {
                     return await res.json();
                 }
@@ -1096,7 +1096,7 @@
 
         // REST Score Sync (Menggunakan PUT untuk merekam key di kvdb)
         window.cloudSubmitScore = async function(record) {
-            const url = `${publicBucketUrl}/scores_${record.sessionCode}`;
+            const url = `${publicBucketUrl}/cybernexus_v3_scores_${record.sessionCode}`;
             try {
                 let currentScores = [];
                 const res = await fetch(url);
@@ -1127,7 +1127,7 @@
             restPollingTimer = setInterval(poll, 4000);
 
             async function poll() {
-                const url = `${publicBucketUrl}/scores_${sessionCode}`;
+                const url = `${publicBucketUrl}/cybernexus_v3_scores_${sessionCode}`;
                 try {
                     const res = await fetch(url);
                     if (res.ok) {
@@ -2321,7 +2321,7 @@
             avatarEmojis.forEach(emoji => {
                 const btn = document.createElement("button");
                 btn.type = "button";
-                btn.className = "avatar-option text-3xl p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/50 transition-all focus:outline-none";
+                btn.className = "avatar-option text-3xl p-3.5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-cyan-500/50 transition-all focus:outline-none";
                 btn.innerText = emoji;
                 btn.onclick = () => {
                     document.querySelectorAll(".avatar-option").forEach(b => b.classList.replace("border-cyan-500", "border-slate-800"));
