@@ -1313,6 +1313,8 @@
         // Cache upload Base64 strings
         let customUploadedPuzzleBase64 = null;
         let inlineUploadedPuzzleBase64 = null;
+        const PUZZLE_FALLBACK_IMAGE = "https://placehold.co/600x600/0f172a/06b6d4?text=Puzzle+Image";
+        let puzzleHintAllowance = 1;
 
         // Custom Modal UI helper
         function showCustomModal(title, text, icon = '⚠️') {
@@ -1697,6 +1699,7 @@
             initCloudModule();
             initStudentPastAttempts();
             renderTeacherQuestionsList();
+            bindStudentCodeFormatter();
 
             const confirmBtn = document.getElementById("confirm-action-btn");
             if (confirmBtn) {
@@ -1861,6 +1864,7 @@
             if (manPanel) manPanel.classList.add("hidden"); 
             document.getElementById("screen-gate").classList.add("hidden");
             document.getElementById("screen-student-gateway").classList.remove("hidden");
+            bindStudentCodeFormatter();
             
             // Resume states
             const savedState = localStorage.getItem("cyber_nexus_interrupted_state");
@@ -1919,43 +1923,67 @@
 
     <!-- IMAGE LOCAL FILE UPLOAD & AUTO COMPRESSION ENGINE -->
     <script>
-        function compressLocalImageFile(file) {
+        function blobToDataURL(blob) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.src = event.target.result;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        let width = img.width;
-                        let height = img.height;
-                        const maxDim = 300;
-
-                        if (width > height) {
-                            if (width > maxDim) {
-                                height = Math.round((height * maxDim) / width);
-                                width = maxDim;
-                            }
-                        } else {
-                            if (height > maxDim) {
-                                width = Math.round((width * maxDim) / height);
-                                height = maxDim;
-                            }
-                        }
-
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-
-                        const base64 = canvas.toDataURL('image/jpeg', 0.6);
-                        resolve(base64);
-                    };
-                    img.onerror = (err) => reject(err);
-                };
+                reader.onload = () => resolve(reader.result);
                 reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(blob);
             });
+        }
+
+        function loadImageFromDataUrl(dataUrl) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = (err) => reject(err);
+                img.src = dataUrl;
+            });
+        }
+
+        async function compressLocalImageFile(fileOrBlob) {
+            const inputDataUrl = await blobToDataURL(fileOrBlob);
+            const img = await loadImageFromDataUrl(inputDataUrl);
+
+            // Keep full image visible: fit inside square canvas (contain), no cropping.
+            const maxSourceDim = 1200;
+            const sourceScale = Math.min(1, maxSourceDim / Math.max(img.width, img.height));
+            const scaledW = Math.max(1, Math.round(img.width * sourceScale));
+            const scaledH = Math.max(1, Math.round(img.height * sourceScale));
+            const squareSide = Math.max(scaledW, scaledH);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = squareSide;
+            canvas.height = squareSide;
+
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0b1220';
+            ctx.fillRect(0, 0, squareSide, squareSide);
+
+            const offsetX = Math.round((squareSide - scaledW) / 2);
+            const offsetY = Math.round((squareSide - scaledH) / 2);
+            ctx.drawImage(img, offsetX, offsetY, scaledW, scaledH);
+
+            return canvas.toDataURL('image/webp', 0.72);
+        }
+
+        async function compressPuzzleImageFromUrl(imageUrl) {
+            const res = await fetch(imageUrl, { mode: 'cors' });
+            if (!res.ok) throw new Error("URL gambar tidak bisa diakses");
+            const blob = await res.blob();
+            return await compressLocalImageFile(blob);
+        }
+
+        async function resolvePuzzleImageSourceForStorage(imageUrl) {
+            const cleanUrl = (imageUrl || "").trim();
+            if (!cleanUrl) return PUZZLE_FALLBACK_IMAGE;
+
+            try {
+                return await compressPuzzleImageFromUrl(cleanUrl);
+            } catch (e) {
+                // Keep URL as fallback when host blocks cross-origin download; app will still display it directly.
+                return cleanUrl;
+            }
         }
 
         async function handlePuzzleLocalUpload(event, mode) {
@@ -2140,7 +2168,7 @@
             }
         }
 
-        function saveCustomQuestion() {
+        async function saveCustomQuestion() {
             const type = document.getElementById("custom-q-type").value;
             const topic = document.getElementById("custom-q-topic").value.trim() || "Informatika";
             const text = document.getElementById("custom-q-text").value.trim();
@@ -2207,7 +2235,7 @@
                     newQ.image_url = customUploadedPuzzleBase64;
                 } else {
                     const imgUrl = document.getElementById("custom-puzzle-image").value.trim();
-                    newQ.image_url = imgUrl || "https://placehold.co/300x300/0f172a/06b6d4?text=Sirkuit+Server";
+                    newQ.image_url = await resolvePuzzleImageSourceForStorage(imgUrl);
                 }
             }
 
@@ -2510,7 +2538,7 @@
             renderPreviewList();
         }
 
-        function saveInlineEdit(qId) {
+        async function saveInlineEdit(qId) {
             const qIndex = teacherQuestions.findIndex(q => q.id === qId);
             if (qIndex === -1) return;
 
@@ -2581,7 +2609,7 @@
                     if (!url && teacherQuestions[qIndex].image_url?.startsWith("data:")) {
                         updatedQ.image_url = teacherQuestions[qIndex].image_url;
                     } else {
-                        updatedQ.image_url = url || "https://placehold.co/300x300/0f172a/06b6d4?text=Sirkuit+Server";
+                        updatedQ.image_url = await resolvePuzzleImageSourceForStorage(url);
                     }
                 }
             }
@@ -2638,6 +2666,25 @@
     <!-- STUDENT GATEWAY ACCESS & AVATAR GENERATION -->
     <script>
         const avatarEmojis = ["🤴", "👸", "🧙‍♂️", "🧝‍♀️", "🦸‍♂️", "🦹‍♀️", "👨‍💻", "👩‍💻"];
+
+        function bindStudentCodeFormatter() {
+            const input = document.getElementById("student-session-code");
+            if (!input || input.dataset.formatterBound === "1") return;
+
+            input.addEventListener("input", () => {
+                let val = input.value.toUpperCase();
+                val = val.replace(/\s+/g, '');
+                val = val.replace(/_/g, '-');
+                val = val.replace(/[^A-Z0-9-]/g, '');
+
+                if (/^NEXUS\d{1,3}$/.test(val)) {
+                    val = val.replace(/^NEXUS(\d{1,3})$/, 'NEXUS-$1');
+                }
+                input.value = val;
+            });
+
+            input.dataset.formatterBound = "1";
+        }
         
         function renderAvatarSelectionGrid() {
             const grid = document.getElementById("avatar-grid");
@@ -2871,6 +2918,7 @@
             studentComboStreak = 0;
             totalSpeedTime = 0;
             isProcessingAnswer = false;
+            puzzleHintAllowance = 1;
 
             document.getElementById("session-title-badge").classList.remove("hidden");
             document.getElementById("header-assessment-title").innerHTML = activeSession.title + ' <span class="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-lg ml-2 font-black font-mono border border-cyan-500/30">' + activeSession.code + '</span>';
@@ -2930,7 +2978,8 @@
                 stamina: studentStamina,
                 timer: timerSecondsRemaining,
                 sessionCode: activeSession ? activeSession.code : "",
-                speed: totalSpeedTime
+                speed: totalSpeedTime,
+                puzzleHintAllowance: puzzleHintAllowance
             };
             localStorage.setItem("cyber_nexus_interrupted_state", JSON.stringify(state));
         }
@@ -2961,6 +3010,7 @@
                 timerSecondsRemaining = state.timer;
                 totalSpeedTime = state.speed;
                 isProcessingAnswer = false;
+                puzzleHintAllowance = (typeof state.puzzleHintAllowance === 'number') ? state.puzzleHintAllowance : (state.idx > 0 ? 0 : 1);
 
                 activeSession = foundSess;
                 activeQuestions = [...foundSess.questions];
@@ -3068,6 +3118,24 @@
         let currentSelectedPairLeft = null;
         let activePairsSelected = {};
         let puzzleLayoutState = [];
+
+        function preloadImageOrFallback(srcUrl) {
+            return new Promise((resolve) => {
+                const candidate = srcUrl || PUZZLE_FALLBACK_IMAGE;
+                const img = new Image();
+                img.onload = () => resolve(candidate);
+                img.onerror = () => resolve(PUZZLE_FALLBACK_IMAGE);
+                img.src = candidate;
+            });
+        }
+
+        function applyPuzzleSliceStyle(el, pos, srcUrl) {
+            el.style.backgroundImage = `url('${srcUrl}')`;
+            el.style.backgroundSize = "200% 200%";
+            const xPct = (pos % 2) * 100;
+            const yPct = Math.floor(pos / 2) * 100;
+            el.style.backgroundPosition = `${xPct}% ${yPct}%`;
+        }
 
         function loadQuestionChallenge() {
             if (currentStudentIdx >= activeQuestions.length) {
@@ -3230,36 +3298,47 @@
                 grid.className = "grid grid-cols-2 gap-1.5 w-full aspect-square mx-auto relative border border-slate-850 p-1.5 rounded-2xl bg-slate-950 shadow-lg shadow-cyan-950/10 overflow-hidden";
                 
                 puzzleLayoutState = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+                const showFirstLevelHint = (currentStudentIdx === 0 && puzzleHintAllowance > 0);
+                const puzzlePieces = [];
                 
                 puzzleLayoutState.forEach((pos, idx) => {
                     const div = document.createElement("div");
                     div.className = "puzzle-piece aspect-square rounded-xl border border-slate-850 cursor-pointer overflow-hidden relative flex items-center justify-center bg-slate-900 transition-all duration-300 hover:border-cyan-500 hover:scale-[1.02]";
                     
-                    if (currentStudentIdx === 0) {
+                    if (showFirstLevelHint) {
                         div.innerHTML = `
-                            <span class="absolute top-1.5 left-1.5 w-5 h-5 rounded-lg bg-slate-950/80 border border-cyan-500/50 flex items-center justify-center font-mono font-bold text-[10px] text-cyan-400 text-glow-cyan z-20 pointer-events-none">${pos + 1}</span>
+                            <span data-puzzle-hint="true" class="absolute top-1.5 left-1.5 w-5 h-5 rounded-lg bg-slate-950/80 border border-cyan-500/50 flex items-center justify-center font-mono font-bold text-[10px] text-cyan-400 text-glow-cyan z-20 pointer-events-none">${pos + 1}</span>
                         `;
                     }
                     div.dataset.index = idx;
                     div.onclick = () => handlePuzzleClick(div);
-                    
-                    if (q.image_url) {
-                        div.style.backgroundImage = `url('${q.image_url}')`;
-                        div.style.backgroundSize = "200% 200%";
-                        
-                        let xPct = (pos % 2) * 100;
-                        let yPct = Math.floor(pos / 2) * 100;
-                        div.style.backgroundPosition = `${xPct}% ${yPct}%`;
-                    }
+
+                    applyPuzzleSliceStyle(div, pos, PUZZLE_FALLBACK_IMAGE);
+
+                    puzzlePieces.push({ el: div, pos });
 
                     grid.appendChild(div);
                 });
+
+                preloadImageOrFallback(q.image_url).then((resolvedSrc) => {
+                    puzzlePieces.forEach((piece) => {
+                        applyPuzzleSliceStyle(piece.el, piece.pos, resolvedSrc);
+                    });
+                });
+
+                if (showFirstLevelHint) {
+                    setTimeout(() => {
+                        grid.querySelectorAll('[data-puzzle-hint="true"]').forEach((hint) => hint.remove());
+                    }, 5000);
+                }
 
                 frame.appendChild(grid);
 
                 const hint = document.createElement("span");
                 hint.className = "text-[9px] text-slate-500 font-mono block";
-                hint.innerText = "Ketuk sepasang kotak sirkuit untuk saling menukar letaknya.";
+                hint.innerText = showFirstLevelHint
+                    ? "Hint angka hanya muncul di level awal (5 detik), lalu lanjutkan dengan logika mandiri."
+                    : "Ketuk sepasang kotak sirkuit untuk saling menukar letaknya.";
                 frame.appendChild(hint);
 
                 zone.appendChild(frame);
@@ -3418,14 +3497,6 @@
                 });
                 isCorrect = orderCorrect;
             } else if (q.type === 'puzzle') {
-                let userPieces = [];
-                document.querySelectorAll(".puzzle-piece").forEach(p => {
-                    const labelSpan = p.querySelector("span");
-                    if (labelSpan) {
-                        userPieces.push(parseInt(labelSpan.innerText) - 1);
-                    }
-                });
-
                 let puzzleCorrect = true;
                 const pieces = document.querySelectorAll(".puzzle-piece");
                 pieces.forEach((p, index) => {
@@ -3439,6 +3510,10 @@
                     }
                 });
                 isCorrect = puzzleCorrect;
+
+                if (currentStudentIdx === 0 && puzzleHintAllowance > 0) {
+                    puzzleHintAllowance = 0;
+                }
             }
 
             evaluateAndAdvance(isCorrect);
@@ -3821,6 +3896,7 @@
         function restartSystem() {
             document.getElementById("screen-leaderboard").classList.add("hidden");
             document.getElementById("screen-gate").classList.remove("hidden");
+            puzzleHintAllowance = 1;
             
             document.getElementById("session-title-badge").classList.add("hidden");
 
