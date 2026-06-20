@@ -1392,6 +1392,7 @@
         let lastSubmitGuardAt = 0;
         let lastPuzzleTapAt = 0;
         let lastActionFingerprint = "";
+        const CLASSROOM_MAX_PARTICIPANTS = 34;
 
         function detectLowEndDevice() {
             const mem = navigator.deviceMemory || 4;
@@ -2904,7 +2905,7 @@
                 window.setupTeacherLiveMonitorListener(uniqueCode);
             }
 
-            showCustomModal("🛡️ ARENA BERHASIL AKTIF", "Sandi Arena: " + uniqueCode + "\nBagikan kode di atas ke siswa Anda untuk langsung memulai kuis!", "🎉");
+            showCustomModal("🛡️ ARENA BERHASIL AKTIF", "Sandi Arena: " + uniqueCode + "\nBagikan kode di atas ke siswa Anda untuk langsung memulai kuis!\nBatas aman kelas penuh: " + CLASSROOM_MAX_PARTICIPANTS + " peserta.", "🎉");
             switchTeacherTab('teacher-tab-config');
         }
 
@@ -2932,6 +2933,12 @@
 
             showCustomModal("🛑 GAME DIAKHIRI", "Akses pendaftaran siswa baru untuk kode " + activeSession.code + " telah resmi dihentikan.", "⚠️");
             renderHistoryClasses();
+        }
+
+        function getLiveRosterCount(sessionCode) {
+            const sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
+            const sess = sesHistory[sessionCode];
+            return Array.isArray(sess?.students) ? sess.students.length : 0;
         }
 
         function updateTeacherMonitorTimerTick() {
@@ -2997,6 +3004,15 @@
                 return;
             }
 
+            const roster = Array.isArray(foundSess.students) ? foundSess.students : [];
+            const duplicateEntry = roster.some((player) => player.name === name && player.className === cls);
+            if (!duplicateEntry && roster.length >= CLASSROOM_MAX_PARTICIPANTS) {
+                showCustomModal("⚠️ KUOTA KELAS PENUH", `Sesi ini dibatasi maksimal ${CLASSROOM_MAX_PARTICIPANTS} peserta agar tetap stabil di HP/IFP/laptop.`, "⚠️");
+                startBtn.innerHTML = originalBtnHtml;
+                startBtn.disabled = false;
+                return;
+            }
+
             if (foundSess.status === "stopped") {
                 showCustomModal("🛑 GAME TELAH DIHENTIKAN", "Sesi game kuis ini sudah dihentikan oleh Guru.", "⚠️");
                 startBtn.innerHTML = originalBtnHtml;
@@ -3039,6 +3055,7 @@
             document.getElementById("gameplay-student-class").innerText = "Kelas " + cls;
             document.getElementById("gameplay-avatar-display").innerText = selectedStudentAvatarEmoji;
             document.getElementById("gameplay-live-score").innerText = "0 Pts";
+            document.getElementById("session-title-badge").title = `Kapasitas aman kelas: ${CLASSROOM_MAX_PARTICIPANTS} peserta`;
 
             const indicator = document.getElementById("map-indicator-theme");
             if (mapTheme === 'space') {
@@ -3935,7 +3952,7 @@
                     </div>
                     <div class="flex justify-between items-center text-xs flex-wrap gap-2">
                         <div class="flex flex-col gap-0.5 text-slate-400 font-mono text-[10px]">
-                            <span class="font-medium">👥 ${countSt} Peserta Misi Aktif (Tersinkronisasi Cloud)</span>
+                            <span class="font-medium">👥 ${countSt}/${CLASSROOM_MAX_PARTICIPANTS} Peserta Misi Aktif (Tersinkronisasi Cloud)</span>
                             <span class="text-amber-400 font-bold">📈 Rata-rata Nilai: ${avgClassScore} Pts</span>
                         </div>
                         <div class="flex gap-1.5 flex-wrap">
@@ -4029,6 +4046,7 @@
             puzzleHintAllowance = 1;
             lastSubmitGuardAt = 0;
             lastActionFingerprint = "";
+            lastPuzzleTapAt = 0;
             
             document.getElementById("session-title-badge").classList.add("hidden");
 
