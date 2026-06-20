@@ -44,6 +44,28 @@
             background-image: 
                 radial-gradient(circle at 20% 30%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
                 radial-gradient(circle at 80% 70%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
+            transition: background-image 280ms ease, filter 280ms ease;
+        }
+
+        body[data-theme='medieval'] {
+            background-image:
+                radial-gradient(circle at 20% 30%, rgba(245, 158, 11, 0.10) 0%, transparent 36%),
+                radial-gradient(circle at 78% 72%, rgba(244, 114, 182, 0.08) 0%, transparent 32%),
+                linear-gradient(180deg, rgba(2,6,23,0.9), rgba(15,23,42,0.98));
+        }
+
+        body[data-theme='space'] {
+            background-image:
+                radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.14) 0%, transparent 34%),
+                radial-gradient(circle at 75% 72%, rgba(14, 165, 233, 0.10) 0%, transparent 30%),
+                linear-gradient(180deg, rgba(2,6,23,0.92), rgba(8,15,40,0.98));
+        }
+
+        body[data-theme='cyber'] {
+            background-image:
+                radial-gradient(circle at 20% 30%, rgba(6, 182, 212, 0.12) 0%, transparent 36%),
+                radial-gradient(circle at 78% 76%, rgba(244, 63, 94, 0.09) 0%, transparent 30%),
+                linear-gradient(180deg, rgba(2,6,23,0.9), rgba(5,10,26,0.98));
         }
         
         .font-mono {
@@ -212,6 +234,18 @@
         html.low-end-mode .shadow-2xl,
         html.low-end-mode .shadow-xl {
             box-shadow: none !important;
+        }
+
+        body[data-theme='medieval'] .theme-header {
+            text-shadow: 0 0 10px rgba(245, 158, 11, 0.55);
+        }
+
+        body[data-theme='space'] .theme-header {
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.65);
+        }
+
+        body[data-theme='cyber'] .theme-header {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.65);
         }
     </style>
 </head>
@@ -474,9 +508,26 @@
                             <span class="text-slate-400 block font-mono text-[10px] mb-1">RATA-RATA NILAI KELAS</span>
                             <span id="monitor-session-average" class="text-2xl font-mono font-bold text-amber-400 text-glow-cyan">0 Pts</span>
                         </div>
-                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-900 col-span-2">
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-900">
+                            <span class="text-slate-400 block font-mono text-[10px] mb-1">SISA SLOT KELAS</span>
+                            <span id="monitor-session-slots-left" class="text-2xl font-mono font-bold text-emerald-400 text-glow-cyan">34</span>
+                        </div>
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-900">
                             <span class="text-slate-400 block font-mono text-[10px] mb-1">JUDUL SESI</span>
                             <span id="monitor-session-title" class="text-sm font-bold text-slate-200 truncate block">-</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-950/80 border border-slate-900 rounded-2xl p-4 space-y-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <span class="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block font-mono">🧑‍🤝‍🧑 ROSTER LIVE KELAS</span>
+                                <p id="teacher-live-roster-summary" class="text-[10px] text-slate-500 font-mono mt-1">0/34 terisi • 34 slot tersisa</p>
+                            </div>
+                            <div class="text-[10px] text-slate-500 font-mono text-right">Peserta diperbarui otomatis dari cloud dan cache lokal.</div>
+                        </div>
+                        <div id="teacher-live-roster-list" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                            <div class="text-[10px] text-slate-500 italic font-mono">Belum ada peserta di roster sesi ini.</div>
                         </div>
                     </div>
                     
@@ -1422,6 +1473,85 @@
             return true;
         }
 
+        function applyThemePresentation(themeName) {
+            const normalizedTheme = themeName || 'medieval';
+            document.body.dataset.theme = normalizedTheme;
+            document.documentElement.dataset.theme = normalizedTheme;
+        }
+
+        function playThemeJingle(themeName) {
+            if (!synth) return;
+            const score = {
+                medieval: [[392, 0.12], [523, 0.12], [659, 0.18]],
+                space: [[220, 0.10], [330, 0.10], [440, 0.15], [660, 0.20]],
+                cyber: [[260, 0.08], [390, 0.08], [520, 0.10], [780, 0.16]]
+            }[themeName] || [[392, 0.12], [523, 0.12], [659, 0.18]];
+
+            let offset = 0;
+            score.forEach(([freq, duration]) => {
+                setTimeout(() => synth.playTone(freq, 'sine', duration), offset);
+                offset += Math.round(duration * 900);
+            });
+        }
+
+        function renderTeacherLiveRosterSummary(sessCode) {
+            const summaryEl = document.getElementById("teacher-live-roster-summary");
+            const listEl = document.getElementById("teacher-live-roster-list");
+            if (!summaryEl || !listEl) return;
+
+            const sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
+            const sess = sesHistory[sessCode] || {};
+            const roster = Array.isArray(sess.students) ? sess.students.slice() : [];
+            roster.sort((a, b) => b.score - a.score);
+
+            const total = roster.length;
+            const remaining = Math.max(0, CLASSROOM_MAX_PARTICIPANTS - total);
+            summaryEl.innerHTML = `
+                <span class="text-cyan-300 font-bold">${total}/${CLASSROOM_MAX_PARTICIPANTS}</span>
+                <span class="text-slate-500">terisi</span>
+                <span class="text-slate-500">•</span>
+                <span class="text-amber-300 font-bold">${remaining} slot tersisa</span>
+            `;
+
+            if (roster.length === 0) {
+                listEl.innerHTML = `<div class="text-[10px] text-slate-500 italic font-mono">Belum ada peserta di roster sesi ini.</div>`;
+                return;
+            }
+
+            listEl.innerHTML = roster.slice(0, CLASSROOM_MAX_PARTICIPANTS).map((student, index) => `
+                <div class="flex items-center justify-between gap-3 bg-slate-950/80 border border-slate-900 rounded-xl px-3 py-2">
+                    <div class="min-w-0">
+                        <div class="text-[10px] font-bold text-slate-200 truncate">${index + 1}. ${student.name}</div>
+                        <div class="text-[9px] text-slate-500 font-mono truncate">${student.className} • ${student.character || ''}</div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <div class="text-[10px] font-bold text-emerald-400">${student.score} Pts</div>
+                        <div class="text-[9px] text-slate-500 font-mono">${student.timeSpent || '--:--'}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function registerRecoveryGuards() {
+            window.addEventListener('beforeunload', () => {
+                if (document.getElementById("screen-gameplay") && !document.getElementById("screen-gameplay").classList.contains("hidden")) {
+                    saveCurrentStudentInterruptedState();
+                }
+            });
+
+            window.addEventListener('pagehide', () => {
+                if (document.getElementById("screen-gameplay") && !document.getElementById("screen-gameplay").classList.contains("hidden")) {
+                    saveCurrentStudentInterruptedState();
+                }
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden' && document.getElementById("screen-gameplay") && !document.getElementById("screen-gameplay").classList.contains("hidden")) {
+                    saveCurrentStudentInterruptedState();
+                }
+            });
+        }
+
         // Custom Modal UI helper
         function showCustomModal(title, text, icon = '⚠️') {
             document.getElementById("modal-icon-display").innerText = icon;
@@ -1733,6 +1863,8 @@
                     }
                     const avgEl = document.getElementById("monitor-session-average");
                     if (avgEl) avgEl.innerText = `${avgScore} Pts`;
+                    const slotsEl = document.getElementById("monitor-session-slots-left");
+                    if (slotsEl) slotsEl.innerText = `${Math.max(0, CLASSROOM_MAX_PARTICIPANTS - list.length)}`;
 
                     const tBody = document.getElementById("teacher-monitor-rows");
                     if (tBody) {
@@ -1753,6 +1885,7 @@
                             tBody.appendChild(tr);
                         });
                     }
+                    renderTeacherLiveRosterSummary(sessCode);
                 });
                 return;
             }
@@ -1774,6 +1907,8 @@
                 }
                 const avgEl = document.getElementById("monitor-session-average");
                 if (avgEl) avgEl.innerText = `${avgScore} Pts`;
+                const slotsEl = document.getElementById("monitor-session-slots-left");
+                if (slotsEl) slotsEl.innerText = `${Math.max(0, CLASSROOM_MAX_PARTICIPANTS - list.length)}`;
 
                 const tBody = document.getElementById("teacher-monitor-rows");
                 if (tBody) {
@@ -1796,6 +1931,7 @@
                         tBody.appendChild(tr);
                     });
                 }
+                renderTeacherLiveRosterSummary(sessCode);
             }, (error) => {
                 console.warn("Realtime monitor guru terhambat.");
             });
@@ -1807,6 +1943,7 @@
             renderTeacherQuestionsList();
             bindStudentCodeFormatter();
             applyPerformanceProfile();
+            registerRecoveryGuards();
 
             const confirmBtn = document.getElementById("confirm-action-btn");
             if (confirmBtn) {
@@ -1972,6 +2109,7 @@
             document.getElementById("screen-gate").classList.add("hidden");
             document.getElementById("screen-student-gateway").classList.remove("hidden");
             bindStudentCodeFormatter();
+            applyPerformanceProfile();
             
             // Resume states
             const savedState = localStorage.getItem("cyber_nexus_interrupted_state");
@@ -2874,6 +3012,7 @@
                 questions: selected,
                 status: "active"
             };
+            applyThemePresentation(themeVal);
 
             let sesHistory = JSON.parse(localStorage.getItem("cyber_nexus_active_sessions")) || {};
             sesHistory[uniqueCode] = activeSession;
@@ -2889,6 +3028,7 @@
             document.getElementById("teacher-live-monitor").classList.remove("hidden");
             document.getElementById("monitor-session-code").innerText = uniqueCode;
             document.getElementById("monitor-session-title").innerText = titleVal;
+            renderTeacherLiveRosterSummary(uniqueCode);
 
             const btnStop = document.getElementById("btn-stop-session");
             if (btnStop) {
@@ -3030,6 +3170,8 @@
             currentStudentClass = cls;
             activeSession = foundSess;
             mapTheme = foundSess.theme;
+            applyThemePresentation(mapTheme);
+            playThemeJingle(mapTheme);
             originalSessionDuration = foundSess.duration * 60;
             timerSecondsRemaining = originalSessionDuration;
 
@@ -3140,6 +3282,8 @@
                 totalSpeedTime = state.speed;
                 isProcessingAnswer = false;
                 puzzleHintAllowance = (typeof state.puzzleHintAllowance === 'number') ? state.puzzleHintAllowance : (state.idx > 0 ? 0 : 1);
+                applyThemePresentation(foundSess.theme);
+                playThemeJingle(foundSess.theme);
                 applyPerformanceProfile();
 
                 activeSession = foundSess;
