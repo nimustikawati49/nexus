@@ -141,6 +141,50 @@
             z-index: 5;
             pointer-events: none;
         }
+
+        button,
+        input,
+        textarea,
+        .puzzle-piece,
+        .avatar-option,
+        .choice-option-btn,
+        .match-btn-left,
+        .match-btn-right {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        button:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible,
+        .puzzle-piece:focus-visible {
+            outline: 2px solid rgba(34, 211, 238, 0.9);
+            outline-offset: 2px;
+        }
+
+        @media (pointer: coarse) {
+            button,
+            .touch-target,
+            input,
+            textarea {
+                min-height: 44px;
+            }
+
+            .puzzle-piece {
+                min-height: 118px;
+            }
+
+            #gameplay-input-zone {
+                touch-action: pan-y;
+            }
+        }
+
+        @media (max-width: 640px) {
+            #gameplay-question-text {
+                font-size: 0.95rem;
+                line-height: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body class="text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-slate-900">
@@ -3174,7 +3218,7 @@
                     if (!opt || opt === "-") return;
                     const btn = document.createElement("button");
                     btn.type = "button";
-                    btn.className = "choice-option-btn text-left p-4 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/50 hover:bg-slate-900 transition-all text-xs focus:outline-none flex items-center gap-3 active:scale-[0.98]";
+                    btn.className = "choice-option-btn touch-target text-left p-4 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/50 hover:bg-slate-900 transition-all text-xs focus:outline-none flex items-center gap-3 active:scale-[0.98]";
                     btn.innerHTML = `<span class="bg-slate-950 border border-slate-800 w-7 h-7 rounded-xl flex items-center justify-center font-bold text-cyan-400 font-mono">${String.fromCharCode(65+index)}</span> <span>${opt}</span>`;
                     
                     btn.onclick = () => {
@@ -3203,6 +3247,7 @@
                 input.type = "text";
                 input.id = "short-answer-input-field";
                 input.placeholder = "Ketik jawaban lalu tekan 'ENTER' di keyboard...";
+                input.autocomplete = "off";
                 input.className = "w-full bg-slate-900 border border-slate-850 focus:border-cyan-500 text-slate-100 rounded-2xl px-4 py-4 text-xs text-glow-cyan focus:outline-none font-mono transition-colors";
                 
                 input.onkeydown = (e) => {
@@ -3241,7 +3286,7 @@
                 q.pairs.forEach((p, idx) => {
                     const btnLeft = document.createElement("button");
                     btnLeft.type = "button";
-                    btnLeft.className = "match-btn-left w-full text-left p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/40 focus:outline-none transition-all";
+                    btnLeft.className = "match-btn-left touch-target w-full text-left p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/40 focus:outline-none transition-all";
                     btnLeft.innerText = p.left;
                     btnLeft.dataset.pairId = p.left;
                     btnLeft.onclick = () => {
@@ -3255,7 +3300,7 @@
                 rightShuffled.forEach(text => {
                     const btnRight = document.createElement("button");
                     btnRight.type = "button";
-                    btnRight.className = "match-btn-right w-full text-left p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/40 focus:outline-none transition-all";
+                    btnRight.className = "match-btn-right touch-target w-full text-left p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-cyan-500/40 focus:outline-none transition-all";
                     btnRight.innerText = text;
                     btnRight.onclick = () => {
                         if (!currentSelectedPairLeft) {
@@ -3284,8 +3329,8 @@
                     row.innerHTML = `
                         <span class="order-text font-semibold">${text}</span>
                         <div class="flex gap-1.5">
-                            <button onclick="moveOrderItem(this, 'up')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▲</button>
-                            <button onclick="moveOrderItem(this, 'down')" class="w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▼</button>
+                            <button onclick="moveOrderItem(this, 'up')" class="touch-target w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▲</button>
+                            <button onclick="moveOrderItem(this, 'down')" class="touch-target w-9 h-9 rounded-xl bg-slate-950 hover:bg-slate-800 flex items-center justify-center font-bold text-cyan-400 font-mono">▼</button>
                         </div>
                     `;
                     list.appendChild(row);
@@ -3303,8 +3348,10 @@
                 const puzzlePieces = [];
                 
                 puzzleLayoutState.forEach((pos, idx) => {
-                    const div = document.createElement("div");
-                    div.className = "puzzle-piece aspect-square rounded-xl border border-slate-850 cursor-pointer overflow-hidden relative flex items-center justify-center bg-slate-900 transition-all duration-300 hover:border-cyan-500 hover:scale-[1.02]";
+                    const div = document.createElement("button");
+                    div.type = "button";
+                    div.className = "puzzle-piece touch-target aspect-square rounded-xl border border-slate-850 cursor-pointer overflow-hidden relative flex items-center justify-center bg-slate-900 transition-all duration-300 hover:border-cyan-500 hover:scale-[1.02]";
+                    div.setAttribute("aria-label", `Keping puzzle ${idx + 1}`);
                     
                     if (showFirstLevelHint) {
                         div.innerHTML = `
@@ -3313,6 +3360,12 @@
                     }
                     div.dataset.index = idx;
                     div.onclick = () => handlePuzzleClick(div);
+                    div.onkeydown = (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handlePuzzleClick(div);
+                        }
+                    };
 
                     applyPuzzleSliceStyle(div, pos, PUZZLE_FALLBACK_IMAGE);
 
