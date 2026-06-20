@@ -185,6 +185,34 @@
                 line-height: 1.5rem;
             }
         }
+
+        body.reduce-motion *,
+        html.low-end-mode * {
+            scroll-behavior: auto !important;
+        }
+
+        body.reduce-motion .animate-pulse,
+        body.reduce-motion .animate-spin,
+        body.reduce-motion .animate-bounce,
+        html.low-end-mode .animate-pulse,
+        html.low-end-mode .animate-spin,
+        html.low-end-mode .animate-bounce {
+            animation: none !important;
+        }
+
+        body.reduce-motion .shimmer::after,
+        body.reduce-motion .scanner-overlay::before,
+        html.low-end-mode .shimmer::after,
+        html.low-end-mode .scanner-overlay::before {
+            animation: none !important;
+        }
+
+        body.reduce-motion .shadow-2xl,
+        body.reduce-motion .shadow-xl,
+        html.low-end-mode .shadow-2xl,
+        html.low-end-mode .shadow-xl {
+            box-shadow: none !important;
+        }
     </style>
 </head>
 <body class="text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-slate-900">
@@ -1359,6 +1387,39 @@
         let inlineUploadedPuzzleBase64 = null;
         const PUZZLE_FALLBACK_IMAGE = "https://placehold.co/600x600/0f172a/06b6d4?text=Puzzle+Image";
         let puzzleHintAllowance = 1;
+        let lowEndPerformanceMode = false;
+        let classroomAntiSpamMode = true;
+        let lastSubmitGuardAt = 0;
+        let lastPuzzleTapAt = 0;
+        let lastActionFingerprint = "";
+
+        function detectLowEndDevice() {
+            const mem = navigator.deviceMemory || 4;
+            const cores = navigator.hardwareConcurrency || 4;
+            const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+            return coarsePointer || mem <= 4 || cores <= 4;
+        }
+
+        function applyPerformanceProfile() {
+            lowEndPerformanceMode = detectLowEndDevice();
+            document.documentElement.classList.toggle('low-end-mode', lowEndPerformanceMode);
+            if (lowEndPerformanceMode) {
+                document.body.classList.add('reduce-motion');
+            }
+        }
+
+        function canProceedAction(kind, fingerprint = '') {
+            const now = Date.now();
+            const cooldown = (kind === 'puzzle' || kind === 'submit') ? (lowEndPerformanceMode ? 650 : 420) : 300;
+            if (!classroomAntiSpamMode) return true;
+
+            if (now - lastSubmitGuardAt < cooldown) return false;
+            if (fingerprint && fingerprint === lastActionFingerprint && now - lastSubmitGuardAt < cooldown * 1.5) return false;
+
+            lastSubmitGuardAt = now;
+            lastActionFingerprint = fingerprint || kind;
+            return true;
+        }
 
         // Custom Modal UI helper
         function showCustomModal(title, text, icon = '⚠️') {
@@ -1744,6 +1805,7 @@
             initStudentPastAttempts();
             renderTeacherQuestionsList();
             bindStudentCodeFormatter();
+            applyPerformanceProfile();
 
             const confirmBtn = document.getElementById("confirm-action-btn");
             if (confirmBtn) {
@@ -2898,6 +2960,11 @@
         }
 
         async function startStudentAdventure() {
+            if (!canProceedAction('start', `${document.getElementById("student-session-code").value}|${document.getElementById("student-name").value}|${document.getElementById("student-class").value}`)) {
+                showCustomModal("⚠️ TERLALU CEPAT", "Tunggu sebentar sebelum mengirim ulang data pendaftaran. Mode kelas ramai aktif.", "⚠️");
+                return;
+            }
+            applyPerformanceProfile();
             const name = document.getElementById("student-name").value.trim();
             const cls = document.getElementById("student-class").value.trim();
             const code = normalizeSessionCode(document.getElementById("student-session-code").value);
@@ -3056,6 +3123,7 @@
                 totalSpeedTime = state.speed;
                 isProcessingAnswer = false;
                 puzzleHintAllowance = (typeof state.puzzleHintAllowance === 'number') ? state.puzzleHintAllowance : (state.idx > 0 ? 0 : 1);
+                applyPerformanceProfile();
 
                 activeSession = foundSess;
                 activeQuestions = [...foundSess.questions];
@@ -3359,10 +3427,14 @@
                         `;
                     }
                     div.dataset.index = idx;
-                    div.onclick = () => handlePuzzleClick(div);
+                    div.onclick = () => {
+                        if (!canProceedAction('puzzle', `${currentStudentIdx}:${idx}`)) return;
+                        handlePuzzleClick(div);
+                    };
                     div.onkeydown = (e) => {
                         if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
+                            if (!canProceedAction('puzzle', `${currentStudentIdx}:${idx}`)) return;
                             handlePuzzleClick(div);
                         }
                     };
@@ -3522,6 +3594,10 @@
 
         function submitChallengeAnswer() {
             if (isProcessingAnswer) return;
+            if (!canProceedAction('submit', `${activeSession?.code || ''}:${currentStudentIdx}`)) {
+                triggerHologramFeedback(false, "Terlalu cepat. Sistem kelas ramai menolak spam tap/submission.", "⚠️");
+                return;
+            }
             isProcessingAnswer = true;
 
             const q = activeQuestions[currentStudentIdx];
@@ -3951,6 +4027,8 @@
             document.getElementById("screen-leaderboard").classList.add("hidden");
             document.getElementById("screen-gate").classList.remove("hidden");
             puzzleHintAllowance = 1;
+            lastSubmitGuardAt = 0;
+            lastActionFingerprint = "";
             
             document.getElementById("session-title-badge").classList.add("hidden");
 
